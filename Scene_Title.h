@@ -1,18 +1,22 @@
 #pragma once
+
 #include "IScene.h"
 
 class ScrollBackground;
 
-class Scene_Title : public IScene {
+class Scene_Title : public IScene
+{
 public:
     explicit Scene_Title(ScrollBackground& bg);
 
-    void Init() override;
+    void OnCreate() override;
+    void OnEnter() override;
+    void OnExit() override;
+
     void Update(float dt) override;
     void Draw() override;
-    bool WantsNext(SceneId& outNext) override;
 
 private:
     ScrollBackground& bg_;
-    bool wantNext_ = false;
+    bool requested_ = false;
 };

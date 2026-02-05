@@ -26,8 +26,7 @@ Scene_Game::Scene_Game(ScrollBackground& bg)
 
 void Scene_Game::OnCreate()
 {
-    gAura.InitOnce();
-    bullets_.Init();
+    // Keep one-time creation empty for now to avoid changing existing bullet/FX init behavior.
 }
 
 void Scene_Game::OnEnter()

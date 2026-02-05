@@ -1,0 +1,17 @@
+player.png
+size:126,84
+pma:true
+fuweni
+bounds:2,2,64,80
+maozi
+bounds:88,59,36,23
+offsets:13,46,64,80
+pifeng
+bounds:88,32,30,25
+offsets:17,18,64,80
+saozhou
+bounds:68,9,18,73
+offsets:23,1,64,80
+toufa
+bounds:88,6,26,24
+offsets:18,26,64,80

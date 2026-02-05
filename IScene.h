@@ -1,11 +1,23 @@
 #pragma once
 
-enum class SceneId { Title, Game };
+#include "SceneId.h"
 
-struct IScene {
-    virtual ~IScene() {}
-    virtual void Init() = 0;
+class SceneManager;
+
+class IScene
+{
+public:
+    virtual ~IScene() = default;
+
+    virtual void OnCreate() = 0;
+    virtual void OnEnter() = 0;
+    virtual void OnExit() = 0;
+
     virtual void Update(float dt) = 0;
     virtual void Draw() = 0;
-    virtual bool WantsNext(SceneId& outNext) = 0;
+
+    void SetSceneManager(SceneManager* mgr) { mgr_ = mgr; }
+
+protected:
+    SceneManager* mgr_ = nullptr;
 };

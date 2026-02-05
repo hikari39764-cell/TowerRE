@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -110,6 +110,7 @@ xcopy C:\KamataEngine\DirectXGame\Resources "$(OutDirFullPath)NoviceResources" /
   <ItemGroup>
     <ClCompile Include="Boss.cpp" />
     <ClCompile Include="BulletManager.cpp" />
+    <ClCompile Include="FadeTransition.cpp" />
     <ClCompile Include="C:\KamataEngine\Adapter\Novice.cpp" />
     <ClCompile Include="External\WICTextureLoader.cpp" />
     <ClCompile Include="GameHUD.cpp" />
@@ -149,6 +150,7 @@ xcopy C:\KamataEngine\DirectXGame\Resources "$(OutDirFullPath)NoviceResources" /
     <ClCompile Include="PlayerAuraLayer.cpp" />
     <ClCompile Include="Scene_Game.cpp" />
     <ClCompile Include="Scene_Title.cpp" />
+    <ClCompile Include="SceneManager.cpp" />
     <ClCompile Include="ScrollBackground.cpp" />
     <ClCompile Include="SpineDefaultExtensionShim.cpp" />
     <ClCompile Include="ThirdParty\spine\src\spine\Animation.cpp" />
@@ -227,6 +229,7 @@ xcopy C:\KamataEngine\DirectXGame\Resources "$(OutDirFullPath)NoviceResources" /
     <ClInclude Include="BulletBehavior.h" />
     <ClInclude Include="BulletBehaviors_Basic.h" />
     <ClInclude Include="BulletManager.h" />
+    <ClInclude Include="FadeTransition.h" />
     <ClInclude Include="BulletPatterns.h" />
     <ClInclude Include="C:\KamataEngine\DirectXGame\base\StringUtility.h" />
     <ClInclude Include="C:\KamataEngine\DirectXGame\math\Matrix4x4.h" />
@@ -293,12 +296,15 @@ xcopy C:\KamataEngine\DirectXGame\Resources "$(OutDirFullPath)NoviceResources" /
     <ClInclude Include="HIKARI_PostSystem.h" />
     <ClInclude Include="HIKARI_RenderTarget2D.h" />
     <ClInclude Include="IScene.h" />
+    <ClInclude Include="ITransition.h" />
     <ClInclude Include="MagicAnimeGlobalFX.h" />
     <ClInclude Include="UI_DialogueMagicFade.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="PlayerAuraLayer.h" />
     <ClInclude Include="Scene_Game.h" />
     <ClInclude Include="Scene_Title.h" />
+    <ClInclude Include="SceneId.h" />
+    <ClInclude Include="SceneManager.h" />
     <ClInclude Include="ScrollBackground.h" />
     <ClInclude Include="Vector2.h" />
   </ItemGroup>

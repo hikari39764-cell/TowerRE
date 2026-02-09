@@ -1,8 +1,7 @@
 #pragma once
 
 #include "SceneId.h"
-
-class SceneManager;
+#include "SceneManager.h"
 
 class IScene
 {

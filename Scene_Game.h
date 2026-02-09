@@ -8,7 +8,7 @@
 #include "Player.h"
 #include "PlayerAuraLayer.h"
 
-class ScrollBackground;
+#include "ScrollBackground.h"
 
 class Scene_Game : public IScene
 {

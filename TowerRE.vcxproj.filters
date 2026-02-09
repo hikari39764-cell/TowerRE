@@ -170,6 +170,9 @@
     <Filter Include="Game\MagicFade">
       <UniqueIdentifier>{c06f53bc-7d52-469d-9182-1f367aff8575}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Game\Scene\Scene_Result">
+      <UniqueIdentifier>{46a9d00f-278f-4d95-873f-d93853ef2c8c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
@@ -509,6 +512,9 @@
     <ClCompile Include="UI_DialogueMagicFade.cpp">
       <Filter>Game\MagicFade</Filter>
     </ClCompile>
+    <ClCompile Include="Scene_Result.cpp">
+      <Filter>Game\Scene\Scene_Result</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="C:\KamataEngine\DirectXGame\audio\Audio.h">
@@ -762,6 +768,9 @@
     </ClInclude>
     <ClInclude Include="UI_DialogueMagicFade.h">
       <Filter>Game\MagicFade</Filter>
+    </ClInclude>
+    <ClInclude Include="Scene_Result.h">
+      <Filter>Game\Scene\Scene_Result</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -143,6 +143,7 @@ xcopy C:\KamataEngine\DirectXGame\Resources "$(OutDirFullPath)NoviceResources" /
     <ClCompile Include="HIKARI_PostSystem.cpp" />
     <ClCompile Include="HIKARI_RenderTarget2D.cpp" />
     <ClCompile Include="MagicAnimeGlobalFX.cpp" />
+    <ClCompile Include="Scene_Result.cpp" />
     <ClCompile Include="UI_DialogueMagicFade.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Matrix3x3.cpp" />
@@ -298,6 +299,7 @@ xcopy C:\KamataEngine\DirectXGame\Resources "$(OutDirFullPath)NoviceResources" /
     <ClInclude Include="IScene.h" />
     <ClInclude Include="ITransition.h" />
     <ClInclude Include="MagicAnimeGlobalFX.h" />
+    <ClInclude Include="Scene_Result.h" />
     <ClInclude Include="UI_DialogueMagicFade.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="PlayerAuraLayer.h" />

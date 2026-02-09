@@ -8,7 +8,7 @@
 #include "HIKARI.h"
 #include "FadeTransition.h"
 #include "ScrollBackground.h"
-
+#include "SceneManager.h"
 static bool CheckCollision(const Vector2& pos1, float r1, const RectF& rect2)
 {
     float closestX = (std::max<float>)(rect2.x, (std::min<float>)(pos1.x, rect2.x + rect2.width));

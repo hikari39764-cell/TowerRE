@@ -1,301 +1,272 @@
 ﻿#include "Boss.h"
 #include "Player.h"
 #include "BulletManager.h"
-#include "BulletBehaviors_Basic.h" // 假设有这个
+#include "BulletBehaviors_Basic.h" 
+#include "HIKARI_Camera.h"
+#include "HIKARI_Particle.h"
 #include <cmath>
 #include <algorithm>
 #include "Vector2.h"
 
-
-// 辅助函数
 static float EaseInOutQuad(float t) { return t < 0.5f ? 2.0f * t * t : 1.0f - powf(-2.0f * t + 2.0f, 2.0f) / 2.0f; }
+static float LerpFloat(float a, float b, float t) { return a + (b - a) * t; }
+static Vector2 LerpVec2(const Vector2& a, const Vector2& b, float t) {
+    return { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t };
+}
+static float NormalizeAngle(float angle) {
+    while (angle > 3.14159265f) angle -= 6.2831853f;
+    while (angle < -3.14159265f) angle += 6.2831853f;
+    return angle;
+}
 
+static void ShakeScreenHeavy(float duration) {
+    HIKARI::CAMERA::ShakeParams p{};
+    p.ampX = 15.0f; p.ampY = 20.0f;
+    p.ampRot = 0.0f;
+    p.freqX = 25.0f; p.freqY = 30.0f;
+    p.durationSec = duration;
+    p.envelope = HIKARI::ANIM::EASE::OutQuad;
+    HIKARI::CAMERA::ShakeEx(p);
+}
+
+static void ShakeScreenLight(float duration) {
+    HIKARI::CAMERA::ShakeParams p{};
+    p.ampX = 5.0f; p.ampY = 5.0f;
+    p.ampRot = 0.0f;
+    p.freqX = 40.0f; p.freqY = 40.0f;
+    p.durationSec = duration;
+    HIKARI::CAMERA::ShakeEx(p);
+}
 
 Boss::Boss() {
     spine_.Load("./Animation/boss.atlas", "./Animation/boss.json");
     spine_.SetAnimation("intro1", true);
-    spine_.transform.position = { 640.0f,360.0f };
+    spine_.transform.position = { 640.0f, 360.0f };
 }
-void Boss::InitPostEffects() {
 
+void Boss::InitPostEffects() {
     if (!fxIce_) {
         fxIce_ = new HIKARI::POST::PostEffect();
         fxIce_->LoadPixelShader(L"./shaders/PS_IceFreeze.hlsl");
         bossChain_.Add(fxIce_);
     }
-
     if (!fxFire_) {
         fxFire_ = new HIKARI::POST::PostEffect();
         fxFire_->LoadPixelShader(L"./shaders/PS_FireHeat.hlsl");
-        bossChain_.Add(fxFire_); 
+        bossChain_.Add(fxFire_);
     }
-
     if (!fxHit_) {
         fxHit_ = new HIKARI::POST::PostEffect();
         fxHit_->LoadPixelShader(L"./shaders/PS_SolidFlash.hlsl");
         hitChain_.Add(fxHit_);
     }
 }
-void Boss::Init(Player* target, BulletManager* bulletMgr) {
+
+void Boss::Init(Player* target, BulletManager* bulletMgr, HIKARI::PARTICLE::ParticleSystem* particleSys) {
     target_ = target;
     bulletMgr_ = bulletMgr;
+    particleSys_ = particleSys;
+
     InitPostEffects();
-    // 默认先应用一次 Normal，防止数值未初始化
+    InitParticleEffects();
+
     SetDifficulty(DifficultyLevel::Normal);
 
-
     position_ = { 640.0f, 200.0f };
-
     spine_.transform.position = position_;
     spine_.Update(0.0f);
     anim_.Bind(&spine_.transform);
+
     state_ = BossState::Intro;
     introAnimPlayed_ = false;
-
     currentGlobalPhase_ = GlobalPhase::Normal;
     activeModeIndex_ = -1;
     lastSkillName_.clear();
 
-    // 重置阶段触发器
     for (int i = 0; i < 4; i++) phaseTriggered_[i] = false;
+
+    renderScale_ = { 1.0f, 1.0f };
+    renderRotation_ = 0.0f;
+    velocity_ = { 0.0f, 0.0f };
+
+    executionQueue_.clear();
+    waitingForCombo_ = false;
+    comboTimer_ = 0.0f;
+    patternTime_ = 0.0f;
+}
+
+void Boss::InitParticleEffects() {
+    if (!particleSys_) return;
+
+    auto chargeCfg = HIKARI::PARTICLE::PRESET::MakeHomingConfig(
+        { 0,0 }, { 120, 120 }, &spine_.transform,
+        40, 0.4f, 0.8f, 200.0f, 500.0f,
+        0xFF88FFFF, 0x00000000, 15.0f
+    );
+    particleSys_->RegisterEffect("BossCharge", { chargeCfg, HIKARI::PARTICLE::PRESET::MakeCircleDrawer(HIKARI::RENDERER::CameraMode::Inherit), HIKARI::PARTICLE::PRESET::MakeHomingSpawn() });
+
+    auto impactCfg = HIKARI::PARTICLE::PRESET::MakeShockwaveRingConfig(
+        { 0,0 }, 64, 0.4f, 0.8f, 80.0f, 700.0f, 0xFFEE88FF, 0xFF000000, 32
+    );
+    particleSys_->RegisterEffect("BossImpact", { impactCfg, HIKARI::PARTICLE::PRESET::MakeRingDrawer(HIKARI::RENDERER::CameraMode::Inherit), HIKARI::PARTICLE::PRESET::MakeShockwaveRingSpawn() });
 }
 
 void Boss::SetDifficulty(DifficultyLevel level) {
     difficulty_ = level;
-
-    switch (level) {
-    case DifficultyLevel::Challenge:
-        maxHp_ = 45000.0f;          // 更高血量
-        speedMultiplier_ = 1.05f;   // 稍快
-        introDuration_ = 2.5f;      // 入场更快
-        moveSpeed_ = 90.0f;         // 移动更快
-        rushSpeed_ = 1300.0f;       // 冲撞极快
-        normalDuration_ = 3.2f;     // 攻击欲望强
-        break;
-    case DifficultyLevel::Normal:
-    default:
-        maxHp_ = 3500.0f;
-        speedMultiplier_ = 1.0f;    // 整体动作变慢 (原版逻辑)
-        introDuration_ = 5.5f;      // 给了很长的入场展示时间
-        moveSpeed_ = 78.0f;
-        rushSpeed_ = 920.0f;
-        normalDuration_ = 5.3f;
-        break;
+    if (level == DifficultyLevel::Challenge) {
+        maxHp_ = 50000.0f;
+        speedMultiplier_ = 1.15f;
+        rushSpeed_ = 1500.0f;
+        normalDuration_ = 2.5f;
+    } else {
+        maxHp_ = 35000.0f;
+        speedMultiplier_ = 1.0f;
+        rushSpeed_ = 950.0f;
+        normalDuration_ = 4.0f;
     }
-
     hp_ = maxHp_;
-
-    // 重新初始化技能池，因为技能权重或连招可能随难度变化
     InitModes();
 }
 
 void Boss::InitModes() {
     modes_.clear();
 
-    // --- Melee Form ---
     ModeDef meleeMode;
     meleeMode.name = "Melee Form";
     meleeMode.switchAnim = "switchPhase1";
     meleeMode.modeIdleAnim = "idle1";
     meleeMode.returnAnim = "returnPhase1";
     meleeMode.weight = 50;
-    meleeMode.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire };
-#if 0
     meleeMode.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire, GlobalPhase::Final };
-#endif
 
-    // Skill: Rush Combo
     SkillDef rushCombo;
     rushCombo.name = "Rush Combo";
-    rushCombo.weight = 35;
+    rushCombo.weight = 30;
     rushCombo.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice };
-
-    // ★ 难度差异：Challenge 模式下 Rush 连撞3次，Normal 撞2次
-    if (difficulty_ == DifficultyLevel::Challenge) {
-        rushCombo.sequence = {
-            { ActionPattern::Rush, 0.0f },
-            { ActionPattern::Wait, 0.3f }, // 等待更短
-            { ActionPattern::Rush, 0.0f },
-            { ActionPattern::Wait, 0.3f },
-            { ActionPattern::Rush, 0.0f }
-        };
-    } else {
-        rushCombo.sequence = {
-            { ActionPattern::Rush, 0.0f },
-            { ActionPattern::Wait, 0.5f },
-            { ActionPattern::Rush, 0.0f }
-        };
-    }
+    rushCombo.sequence = { { ActionPattern::Rush, 0.0f }, { ActionPattern::Wait, 0.3f }, { ActionPattern::Rush, 0.0f } };
     meleeMode.skillPool.push_back(rushCombo);
 
-    // Skill: Flame Rush Burst (Normal)
+    SkillDef groundSlam;
+    groundSlam.name = "Ground Slam";
+    groundSlam.weight = 40;
+    groundSlam.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Fire, GlobalPhase::Final };
+    groundSlam.sequence = { { ActionPattern::GroundSlam, 2.0f } };
+    meleeMode.skillPool.push_back(groundSlam);
+
     SkillDef flameRushBurst;
     flameRushBurst.name = "Flame Rush Burst";
     flameRushBurst.weight = 25;
-    flameRushBurst.allowedGlobalPhases = { GlobalPhase::Normal };
+    flameRushBurst.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Fire };
     flameRushBurst.sequence = { { ActionPattern::FlameRushBurst, 0.0f } };
     meleeMode.skillPool.push_back(flameRushBurst);
 
-    // Skill: Ice Skate Rush
-    SkillDef iceSkateRush;
-    iceSkateRush.name = "Ice Skate Rush";
-    iceSkateRush.weight = 20;
-    iceSkateRush.allowedGlobalPhases = { GlobalPhase::Ice };
-    iceSkateRush.sequence = { { ActionPattern::IceSkateRush, 0.0f } };
-    meleeMode.skillPool.push_back(iceSkateRush);
-
-    // Skill: Flame Rush Burst (Fire)
-    SkillDef flameRushBurstFire;
-    flameRushBurstFire.name = "Flame Rush Burst+";
-    flameRushBurstFire.weight = 30;
-    flameRushBurstFire.allowedGlobalPhases = { GlobalPhase::Fire };
-    flameRushBurstFire.sequence = { { ActionPattern::FlameRushBurst, 0.0f } };
-    meleeMode.skillPool.push_back(flameRushBurstFire);
     modes_.push_back(meleeMode);
 
-    // --- Magic Form ---
     ModeDef magicMode;
     magicMode.name = "Magic Form";
     magicMode.switchAnim = "switchPhase2";
     magicMode.modeIdleAnim = "idle2";
     magicMode.returnAnim = "returnPhase2";
     magicMode.weight = 50;
-    magicMode.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire };
-#if 0
     magicMode.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire, GlobalPhase::Final };
-#endif
 
-    // Skill: Fan Shot (Normal)
-    SkillDef fanShot;
-    fanShot.name = "Fan Shot";
-    fanShot.weight = 25;
-    fanShot.allowedGlobalPhases = { GlobalPhase::Normal };
-    fanShot.sequence = { { ActionPattern::FanShot, 0.0f } };
-    magicMode.skillPool.push_back(fanShot);
+    SkillDef apocalypse;
+    apocalypse.name = "Apocalypse";
+    apocalypse.weight = 25;
+    apocalypse.allowedGlobalPhases = { GlobalPhase::Fire, GlobalPhase::Final };
+    apocalypse.sequence = { { ActionPattern::Apocalypse, 5.0f } };
+    magicMode.skillPool.push_back(apocalypse);
 
-    // Skill: Cross Burst
-    SkillDef crossBurst;
-    crossBurst.name = "Cross Burst";
-    crossBurst.weight = 20;
-    crossBurst.allowedGlobalPhases = { GlobalPhase::Normal };
-    crossBurst.sequence = { { ActionPattern::CrossBurst, 0.0f } };
-    magicMode.skillPool.push_back(crossBurst);
+    SkillDef scatterShot;
+    scatterShot.name = "Scatter Shot";
+    scatterShot.weight = 30;
+    scatterShot.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire };
+    scatterShot.sequence = { { ActionPattern::ScatterShot, 0.0f } };
+    magicMode.skillPool.push_back(scatterShot);
 
-    // Skill: Ring Shot (Normal)
-    SkillDef ringSkill;
-    ringSkill.name = "Ring Barrage";
-    ringSkill.weight = 20;
-    ringSkill.allowedGlobalPhases = { GlobalPhase::Normal };
-    ringSkill.sequence = { { ActionPattern::RingShot, 0.0f } };
-    magicMode.skillPool.push_back(ringSkill);
-
-    // Skill: Icicle Rain
-    SkillDef icicleRain;
-    icicleRain.name = "Icicle Rain";
-    icicleRain.weight = 35;
-    icicleRain.allowedGlobalPhases = { GlobalPhase::Ice };
+    SkillDef icicleRain; icicleRain.name = "Icicle Rain"; icicleRain.weight = 30; icicleRain.allowedGlobalPhases = { GlobalPhase::Ice };
     icicleRain.sequence = { { ActionPattern::IcicleRain, 0.0f } };
     magicMode.skillPool.push_back(icicleRain);
 
-    // Skill: Ice Missiles
-    SkillDef iceMissile;
-    iceMissile.name = "Ice Missiles";
-    iceMissile.weight = 30;
-    iceMissile.allowedGlobalPhases = { GlobalPhase::Ice };
-    iceMissile.sequence = { { ActionPattern::IceMissile, 0.0f } };
-    magicMode.skillPool.push_back(iceMissile);
+    SkillDef fanShot; fanShot.name = "Fan Shot"; fanShot.weight = 25; fanShot.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Fire };
+    fanShot.sequence = { { ActionPattern::FanShot, 0.0f } };
+    magicMode.skillPool.push_back(fanShot);
 
-    // Skill: Ring Shot (Ice)
-    SkillDef ringSkillIce;
-    ringSkillIce.name = "Ring Barrage (Ice)";
-    ringSkillIce.weight = 15;
-    ringSkillIce.allowedGlobalPhases = { GlobalPhase::Ice };
-    ringSkillIce.sequence = { { ActionPattern::RingShot, 0.0f } };
-    magicMode.skillPool.push_back(ringSkillIce);
-
-    // Skill: Fire Spiral
-    SkillDef fireSpiral;
-    fireSpiral.name = "Fire Spiral";
-    fireSpiral.weight = 40;
-    fireSpiral.allowedGlobalPhases = { GlobalPhase::Fire };
-    fireSpiral.sequence = { { ActionPattern::FireSpiral, 0.0f } };
+    SkillDef fireSpiral; fireSpiral.name = "FireSpiral"; fireSpiral.weight = 30; fireSpiral.allowedGlobalPhases = { GlobalPhase::Fire };
+    fireSpiral.sequence = { {ActionPattern::FireSpiral, 0.0f} };
     magicMode.skillPool.push_back(fireSpiral);
 
-    // Skill: Fan Shot (Fire)
-    SkillDef fanShotFire;
-    fanShotFire.name = "Fan Shot (Fire)";
-    fanShotFire.weight = 20;
-    fanShotFire.allowedGlobalPhases = { GlobalPhase::Fire };
-    fanShotFire.sequence = { { ActionPattern::FanShot, 0.0f } };
-    magicMode.skillPool.push_back(fanShotFire);
-
-    // Skill: Ring Shot (Fire)
-    SkillDef ringSkillFire;
-    ringSkillFire.name = "Ring Barrage (Fire)";
-    ringSkillFire.weight = 10;
-    ringSkillFire.allowedGlobalPhases = { GlobalPhase::Fire };
-    ringSkillFire.sequence = { { ActionPattern::RingShot, 0.0f } };
-    magicMode.skillPool.push_back(ringSkillFire);
     modes_.push_back(magicMode);
 }
 
 void Boss::Update(float dt) {
-
     float adjustedDt = dt * speedMultiplier_;
-
-
     if (hurtTimer_ > 0.0f) hurtTimer_ -= dt;
+
+    static Vector2 lastPos = position_;
+    if (dt > 0.0001f) {
+        velocity_ = (position_ - lastPos) * (1.0f / dt);
+    }
+    lastPos = position_;
+
     spine_.transform.position = position_;
+    spine_.transform.scale = renderScale_;
+    spine_.transform.rotation = renderRotation_;
     anim_.Update(dt);
     spine_.Update(adjustedDt);
 
     UpdateState(adjustedDt);
+    UpdateVisuals(dt);
 
-    // --- 冰逻辑 ---
-    if (currentGlobalPhase_ == GlobalPhase::Ice) {
-        iceProgress_ += dt * 0.8f; // 冰冻速度
-    } else {
-        iceProgress_ -= dt * 1.0f; // 快速解冻
-    }
+    if (currentGlobalPhase_ == GlobalPhase::Ice) iceProgress_ += dt * 0.8f;
+    else iceProgress_ -= dt * 1.0f;
     iceProgress_ = std::clamp(iceProgress_, 0.0f, 1.0f);
 
-    // --- 火逻辑 ---
-    if (currentGlobalPhase_ == GlobalPhase::Fire) {
-        fireProgress_ += dt * 0.8f; // 燃烧速度
-    } else {
-        fireProgress_ -= dt * 1.0f; // 熄灭
-    }
+    if (currentGlobalPhase_ == GlobalPhase::Fire || currentGlobalPhase_ == GlobalPhase::Final) fireProgress_ += dt * 0.8f;
+    else fireProgress_ -= dt * 1.0f;
     fireProgress_ = std::clamp(fireProgress_, 0.0f, 1.0f);
 
-    // 计算 Boss 的 UV 坐标 (0~1)
     float screenW = 1280.0f; float screenH = 720.0f;
     DirectX::XMFLOAT4 p1;
-    // 假设 Spine 锚点在脚下，稍微往上一点取中心
     p1.x = position_.x / screenW;
     p1.y = (position_.y - size_.y * 0.5f) / screenH;
 
-    // --- 传参给 Shader ---
-    if (fxIce_) {
-        DirectX::XMFLOAT4 p0; p0.x = iceProgress_;
-        fxIce_->SetUser(0, p0);
-        fxIce_->SetUser(1, p1); // 传入 Boss 位置
-    }
-    if (fxFire_) {
-        DirectX::XMFLOAT4 p0; p0.x = fireProgress_;
-        fxFire_->SetUser(0, p0);
-        fxFire_->SetUser(1, p1); // 传入 Boss 位置
-    }
-
+    if (fxIce_) { DirectX::XMFLOAT4 p0; p0.x = iceProgress_; fxIce_->SetUser(0, p0); fxIce_->SetUser(1, p1); }
+    if (fxFire_) { DirectX::XMFLOAT4 p0; p0.x = fireProgress_; fxFire_->SetUser(0, p0); fxFire_->SetUser(1, p1); }
     if (hitFlashTimer_ > 0.0f) {
-        hitFlashTimer_ -= dt * 5.0f; // Boss 闪得稍微慢一点，显眼一点
+        hitFlashTimer_ -= dt * 5.0f;
         if (hitFlashTimer_ < 0.0f) hitFlashTimer_ = 0.0f;
+        if (fxHit_) { DirectX::XMFLOAT4 p; p.x = hitFlashTimer_; p.y = 1.0f; p.z = 0.5f; p.w = 0.5f; fxHit_->SetUser(0, p); }
+    }
+}
 
-        if (fxHit_) {
-            DirectX::XMFLOAT4 p;
-            p.x = hitFlashTimer_;
-            // Boss 受击颜色：可以带点红 (1.0, 0.5, 0.5)
-            p.y = 1.0f; p.z = 0.5f; p.w = 0.5f;
-            fxHit_->SetUser(0, p);
+void Boss::UpdateVisuals(float dt) {
+    float speed = std::sqrt(velocity_.x * velocity_.x + velocity_.y * velocity_.y);
+    float targetScaleX = 1.0f;
+    float targetScaleY = 1.0f;
+    float targetRot = 0.0f;
+
+    if (speed > 200.0f) {
+        float stretch = 1.0f + std::min(speed * 0.0004f, 0.4f);
+        targetScaleY = stretch;
+        targetScaleX = 1.0f / stretch;
+
+        float tilt = (velocity_.x / 1000.0f) * -0.2f;
+        targetRot = std::clamp(tilt, -0.2f, 0.2f);
+    }
+
+    renderScale_.x = LerpFloat(renderScale_.x, targetScaleX, dt * 15.0f);
+    renderScale_.y = LerpFloat(renderScale_.y, targetScaleY, dt * 15.0f);
+    renderRotation_ = LerpFloat(renderRotation_, targetRot, dt * 10.0f);
+
+    if (speed > 700.0f) {
+        trailTimer_ += dt;
+        if (trailTimer_ > 0.05f) {
+            trailTimer_ = 0.0f;
+            if (particleSys_) {
+                auto cfg = HIKARI::PARTICLE::PRESET::MakeRadialBurstConfig(position_, 2, 0.2f, 0.4f, 10.0f, 40.0f, 0x8888FF66, 0x00FFFFFF);
+                particleSys_->CreateEmitter(cfg, HIKARI::PARTICLE::PRESET::MakeCircleDrawer(HIKARI::RENDERER::CameraMode::Inherit), HIKARI::PARTICLE::PRESET::MakeRadialBurstSpawn())->EmitBurst(2);
+            }
         }
     }
 }
@@ -307,31 +278,20 @@ void Boss::UpdateState(float dt) {
         CheckGlobalPhase();
     }
 
+    if (state_ == BossState::Execute && patternTime_ > 15.0f) {
+        TryNextComboAction();
+        patternTime_ = 0.0f;
+    }
+
     switch (state_) {
-        // =================================================================
-        // ★ 还原原版入场逻辑
-        // =================================================================
     case BossState::Intro:
         if (!introAnimPlayed_) {
-            // 播放入场动画
             spine_.SetAnimation("intro1", false);
-            spine_.AddAnimation("idle", true, 0.0f); // 播完切idle
-
-            // 震屏
-            HIKARI::CAMERA::ShakeParams shake{};
-            shake.freqX = 150.0f; shake.freqY = 20.0f; shake.durationSec = 2.0f;
-            shake.ampX = 35.0f; shake.ampY = 0.5f; shake.ampRot = 0.0f;
-            shake.envelope = HIKARI::ANIM::EASE::InOutQuad;
-            HIKARI::CAMERA::ShakeEx(shake);
-
-            // 手柄震动
-            HIKARI::HINPUT::SetPadVibration(2.0f, 2.0f, 3.0f);
-
+            spine_.AddAnimation("idle", true, 0.0f);
+            ShakeScreenHeavy(1.5f);
             introAnimPlayed_ = true;
             position_ = { 640.0f, 200.0f };
         }
-
-        // 等待时间结束
         if (stateTimer_ > introDuration_) {
             state_ = BossState::Normal;
             stateTimer_ = 0.0f;
@@ -344,12 +304,10 @@ void Boss::UpdateState(float dt) {
         break;
 
     case BossState::Switching:
-        if (stateTimer_ > 1.5f) {
+        if (stateTimer_ > 1.2f) {
             state_ = BossState::Execute;
             stateTimer_ = 0.0f;
-            if (activeModeIndex_ >= 0) {
-                spine_.SetAnimation(modes_[activeModeIndex_].modeIdleAnim.c_str(), true);
-            }
+            if (activeModeIndex_ >= 0) spine_.SetAnimation(modes_[activeModeIndex_].modeIdleAnim.c_str(), true);
             TryNextComboAction();
         }
         break;
@@ -366,21 +324,22 @@ void Boss::UpdateState(float dt) {
                 easeTime_ += dt;
                 float t = easeTime_ / easeDuration_;
                 if (t >= 1.0f) t = 1.0f;
-                position_ = Lerp(easeStartPos_, easeTargetPos_, EaseInOutQuad(t));
+                position_ = LerpVec2(easeStartPos_, easeTargetPos_, EaseInOutQuad(t));
                 if (t >= 1.0f) {
                     pattern_ = easeNextPattern_;
                     patternTime_ = 0.0f;
-                    if (pattern_ == ActionPattern::Rush) rushStep_ = 0;
-                    if (pattern_ == ActionPattern::RingShot) ringStep_ = 0;
-                    if (pattern_ == ActionPattern::FanShot) fanShotStep_ = 0;
-                    if (pattern_ == ActionPattern::CrossBurst) crossBurstStep_ = 0;
-                    if (pattern_ == ActionPattern::IcicleRain) { icicleSpawnTimer_ = 0.0f; }
-                    if (pattern_ == ActionPattern::IceMissile) { iceMissileStep_ = 0; iceMissileTotal_ = 0; }
-                    if (pattern_ == ActionPattern::FireSpiral) { fireSpiralTimer_ = 0.0f; fireSpiralAngle_ = 0.0f; }
-                    if (pattern_ == ActionPattern::FlameRushBurst) { flameRushStep_ = 0; flameBurstRemaining_ = 0; }
-                    if (pattern_ == ActionPattern::IceSkateRush) { iceSkateStep_ = 0; iceSkateDropTimer_ = 0.0f; }
+                    rushStep_ = 0; ringStep_ = 0; fanShotStep_ = 0;
+                    crossBurstStep_ = 0; icicleSpawnTimer_ = 0.0f;
+                    iceMissileStep_ = 0; iceMissileTotal_ = 0;
+                    fireSpiralTimer_ = 0.0f; fireSpiralAngle_ = 0.0f;
+                    flameRushStep_ = 0; flameBurstRemaining_ = 0;
+                    iceSkateStep_ = 0; iceSkateDropTimer_ = 0.0f;
+                    slamStep_ = 0; scatterStep_ = 0; apocalypseStep_ = 0;
                 }
             } else if (pattern_ == ActionPattern::Rush) PatternRush(dt);
+            else if (pattern_ == ActionPattern::GroundSlam) PatternGroundSlam(dt);
+            else if (pattern_ == ActionPattern::ScatterShot) PatternScatterShot(dt);
+            else if (pattern_ == ActionPattern::Apocalypse) PatternApocalypse(dt);
             else if (pattern_ == ActionPattern::RingShot) PatternRingShot(dt);
             else if (pattern_ == ActionPattern::FanShot) PatternFanShot(dt);
             else if (pattern_ == ActionPattern::CrossBurst) PatternCrossBurst(dt);
@@ -393,138 +352,90 @@ void Boss::UpdateState(float dt) {
         break;
 
     case BossState::Returning:
-        // 回归时的平滑移动
         if (pattern_ == ActionPattern::Changing) {
             easeTime_ += dt;
             float t = easeTime_ / easeDuration_;
             if (t >= 1.0f) t = 1.0f;
-            position_ = Lerp(easeStartPos_, easeTargetPos_, EaseInOutQuad(t));
+            position_ = LerpVec2(easeStartPos_, easeTargetPos_, EaseInOutQuad(t));
             if (t >= 1.0f) {
                 pattern_ = easeNextPattern_;
                 patternTime_ = 0.0f;
             }
         }
-
-        if (stateTimer_ > 1.0f && pattern_ != ActionPattern::Changing) {
+        if (stateTimer_ > 0.5f && pattern_ != ActionPattern::Changing) {
             state_ = BossState::Normal;
             stateTimer_ = 0.0f;
             activeModeIndex_ = -1;
-            normalMoveTime_ = 0.0f;
             spine_.SetAnimation("idle", true);
         }
         break;
 
     case BossState::Transitioning:
     {
+        Vector2 centerTarget = { 640.0f, 300.0f };
+        position_ = LerpVec2(position_, centerTarget, 0.15f);
 
-        Vector2 centerTarget = { 640.0f, 200.0f }; 
-
-
-        float t = stateTimer_ * 2.0f;
-        if (t > 1.0f) t = 1.0f;
-        position_ = Lerp(position_, centerTarget, 0.1f); 
-
-
-        if (std::abs(position_.x - centerTarget.x) < 5.0f && std::abs(position_.y - centerTarget.y) < 5.0f) {
-            position_ = centerTarget;
+        if (stateTimer_ > 0.8f && stateTimer_ < 0.85f) {
+            ShakeScreenHeavy(0.8f);
         }
-
-
-        if (stateTimer_ > 1.0f && stateTimer_ < 1.1f) {
-
-
-            HIKARI::CAMERA::ShakeParams shake{};
-            shake.durationSec = 1.0f; shake.ampX = 10.0f;
-            HIKARI::CAMERA::ShakeEx(shake);
-        }
-
-        // 阶段 3: 恢复行动 (3.0s 后)
-        if (stateTimer_ > 3.0f) {
+        if (stateTimer_ > 2.5f) {
             state_ = BossState::Normal;
             stateTimer_ = 0.0f;
             spine_.SetAnimation("idle", true);
-
-            normalMoveTime_ = 0.0f;
         }
-        break;
     }
+    break;
 
     case BossState::Dead:
         break;
     }
 }
 
-
 void Boss::CheckGlobalPhase() {
     float p = hp_ / maxHp_;
     GlobalPhase next = currentGlobalPhase_;
-
-    // 检查阈值
-    if (!phaseTriggered_[1] && p <= 0.70f) { next = GlobalPhase::Ice; phaseTriggered_[1] = true; } else if (!phaseTriggered_[2] && p <= 0.40f) { next = GlobalPhase::Fire; phaseTriggered_[2] = true; }
-#if 0
-    else if (!phaseTriggered_[3] && p <= 0.10f) { next = GlobalPhase::Final; phaseTriggered_[3] = true; }
-#endif
+    if (!phaseTriggered_[1] && p <= 0.70f) { next = GlobalPhase::Ice; phaseTriggered_[1] = true; } else if (!phaseTriggered_[2] && p <= 0.40f) { next = GlobalPhase::Fire; phaseTriggered_[2] = true; } else if (!phaseTriggered_[3] && p <= 0.15f) { next = GlobalPhase::Final; phaseTriggered_[3] = true; }
 
     if (next != currentGlobalPhase_) {
         currentGlobalPhase_ = next;
-
-        // 进入转场状态
         state_ = BossState::Transitioning;
         stateTimer_ = 0.0f;
         velocity_ = { 0,0 };
+        executionQueue_.clear();
+        waitingForCombo_ = false;
+        pattern_ = ActionPattern::Idle;
+        renderScale_ = { 1,1 };
 
-
-        executionQueue_.clear();          // 清空技能队列
-        waitingForCombo_ = false;         // 清除等待标记 (最重要！)
-        pattern_ = ActionPattern::Idle;   // 重置当前动作
-
-        // 如果处于变身状态，立刻切回普通形态
         if (activeModeIndex_ >= 0) {
             spine_.SetAnimation("idle", true);
             activeModeIndex_ = -1;
         }
-
-        // 通知外部
         if (onPhaseChange_) onPhaseChange_(currentGlobalPhase_);
     }
 }
-
 
 void Boss::UpdateNormalBehavior(float dt) {
     normalMoveTime_ += dt;
     shootTimer_ -= dt;
 
     float baseDuration = 5.0f;
-    if (currentGlobalPhase_ == GlobalPhase::Ice) baseDuration = 4.0f;
-    if (currentGlobalPhase_ == GlobalPhase::Fire) baseDuration = 3.2f;
-    if (difficulty_ == DifficultyLevel::Challenge) baseDuration *= 0.75f;
+    if (currentGlobalPhase_ != GlobalPhase::Normal) baseDuration = 3.5f;
+    if (difficulty_ == DifficultyLevel::Challenge) baseDuration *= 0.7f;
     normalDuration_ = baseDuration;
 
-    // ★ 使用 moveSpeed_ 变量
-    float speed = 1.0f;
-#if 0
-    if (currentGlobalPhase_ == GlobalPhase::Final) speed = 2.0f;
-#endif
-    float ampX = moveSpeed_ * 2.5f; // 根据 moveSpeed 调整幅度
+    float ampX = moveSpeed_ * 2.5f;
     float ampY = moveSpeed_ * 0.5f;
-
-    // 8字移动
-    position_.x = 640.0f + std::sin(normalMoveTime_ * speed) * ampX;
-    position_.y = 200.0f + std::sin(normalMoveTime_ * speed * 2.0f) * ampY;
+    position_.x = 640.0f + std::sin(normalMoveTime_) * ampX;
+    position_.y = 200.0f + std::sin(normalMoveTime_ * 2.0f) * ampY;
 
     if (shootTimer_ <= 0.0f) {
         FireNormalBarrage();
-        // 冷却时间
-        float baseCd = 1.4f;
-        if (currentGlobalPhase_ == GlobalPhase::Ice) baseCd = 1.15f;
-        if (currentGlobalPhase_ == GlobalPhase::Fire) baseCd = 0.9f;
-#if 0
+        float baseCd = 1.0f;
+        if (currentGlobalPhase_ == GlobalPhase::Ice) baseCd = 0.8f;
+        if (currentGlobalPhase_ == GlobalPhase::Fire) baseCd = 0.6f;
         if (currentGlobalPhase_ == GlobalPhase::Final) baseCd = 0.4f;
-#endif
 
-        // ★ 难度影响射速
-        if (difficulty_ == DifficultyLevel::Challenge) baseCd *= 0.8f; // Challenge 射得更快
-
+        if (difficulty_ == DifficultyLevel::Challenge) baseCd *= 0.8f;
         shootTimer_ = baseCd;
     }
 
@@ -533,517 +444,464 @@ void Boss::UpdateNormalBehavior(float dt) {
     }
 }
 
-
 void Boss::FireNormalBarrage() {
     if (!bulletMgr_ || !target_) return;
-    const std::string styleName = GetBulletStyleForPhase();
-    if (currentGlobalPhase_ == GlobalPhase::Normal) {
-        Vector2 dir = Normalize(target_->GetPos() - position_);
-        Bullet b; b.pos = position_; b.vel = dir * 360.0f; b.isEnemy = true;
+    std::string style = GetBulletStyleForPhase();
+
+    renderScale_.y = 0.95f; renderScale_.x = 1.05f;
+    ShakeScreenLight(0.1f);
+
+    Vector2 toPlayer = target_->GetPos() - position_;
+    float aimAngle = std::atan2(toPlayer.y, toPlayer.x);
+
+    int aimCount = (difficulty_ == DifficultyLevel::Challenge) ? 5 : 3;
+    float spread = 0.15f;
+    for (int i = 0; i < aimCount; ++i) {
+        float a = aimAngle + (i - (aimCount - 1) * 0.5f) * spread;
+        Bullet b; b.pos = position_;
+        b.vel = { cos(a) * 450.0f, sin(a) * 450.0f };
+        b.isEnemy = true;
         static BulletLinear lin; b.behavior = &lin;
-        bulletMgr_->Spawn(b, styleName);
-    } else if (currentGlobalPhase_ == GlobalPhase::Ice) {
-        float angle = std::atan2(target_->GetPos().y - position_.y, target_->GetPos().x - position_.x);
-        for (int i = -1; i <= 1; ++i) {
-            float a = angle + i * 0.3f;
-            Bullet b; b.pos = position_; b.vel = { std::cos(a) * 320.f, std::sin(a) * 320.f }; b.isEnemy = true;
+        bulletMgr_->Spawn(b, style);
+    }
+
+    static int shotCounter = 0;
+    shotCounter++;
+    if (shotCounter % 2 == 0) {
+        int ringCount = (currentGlobalPhase_ == GlobalPhase::Normal) ? 12 : 18;
+        if (currentGlobalPhase_ == GlobalPhase::Final) ringCount = 24;
+
+        float ringStep = 6.28318f / ringCount;
+        float offset = (shotCounter * 0.1f);
+
+        for (int i = 0; i < ringCount; ++i) {
+            float a = i * ringStep + offset;
+            Bullet b; b.pos = position_;
+            float spd = 300.0f;
+            b.vel = { cos(a) * spd, sin(a) * spd };
+            b.isEnemy = true;
             static BulletLinear lin; b.behavior = &lin;
-            bulletMgr_->Spawn(b, styleName);
+            bulletMgr_->Spawn(b, style);
         }
-    } else {
-        static float spinA = 0.0f; spinA += 0.5f;
-        Bullet b; b.pos = position_; b.vel = { std::cos(spinA) * 440.f, std::sin(spinA) * 440.f }; b.isEnemy = true;
-        static BulletLinear lin; b.behavior = &lin;
-        bulletMgr_->Spawn(b, styleName);
+    }
+
+    if (currentGlobalPhase_ != GlobalPhase::Normal) {
+        int rndCount = 4;
+        for (int i = 0; i < rndCount; ++i) {
+            float rndA = aimAngle + (rand() % 100 - 50) * 0.02f;
+            float spd = 200.0f + rand() % 150;
+            Bullet b; b.pos = position_;
+            b.vel = { cos(rndA) * spd, sin(rndA) * spd };
+            b.isEnemy = true;
+            static BulletAccel accel; b.behavior = &accel;
+            b.acc = b.vel * 0.5f;
+            bulletMgr_->Spawn(b, (currentGlobalPhase_ == GlobalPhase::Fire) ? "e_fire" : "e_ice");
+        }
     }
 }
 
 void Boss::SelectModeAndSkill() {
+
     std::vector<int> validModeIndices;
     float totalWeight = 0.0f;
     for (int i = 0; i < modes_.size(); ++i) {
         bool allowed = modes_[i].allowedGlobalPhases.empty();
-        for (auto p : modes_[i].allowedGlobalPhases) {
-            if (p == currentGlobalPhase_) { allowed = true; break; }
-        }
-        if (allowed && modes_[i].weight > 0) {
-            validModeIndices.push_back(i);
-            totalWeight += static_cast<float>(modes_[i].weight);
-        }
+        for (auto p : modes_[i].allowedGlobalPhases) { if (p == currentGlobalPhase_) { allowed = true; break; } }
+        if (allowed && modes_[i].weight > 0) { validModeIndices.push_back(i); totalWeight += modes_[i].weight; }
     }
     if (validModeIndices.empty()) { state_ = BossState::Normal; stateTimer_ = 0.0f; return; }
-    float r = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * totalWeight;
-    float currentSum = 0.0f;
+
     int selectedIdx = validModeIndices[0];
+    float r = (static_cast<float>(rand()) / RAND_MAX) * totalWeight;
+    float currentSum = 0.0f;
     for (int idx : validModeIndices) {
-        currentSum += static_cast<float>(modes_[idx].weight);
+        currentSum += modes_[idx].weight;
         if (r < currentSum) { selectedIdx = idx; break; }
     }
+
     activeModeIndex_ = selectedIdx;
     const auto& mode = modes_[activeModeIndex_];
-    if (mode.skillPool.empty()) { state_ = BossState::Normal; return; }
 
-    std::vector<int> validSkillIndices;
-    std::vector<float> validSkillWeights;
     float totalSkillWeight = 0.0f;
-    for (int i = 0; i < mode.skillPool.size(); ++i) {
-        const auto& skill = mode.skillPool[i];
-        bool allowed = skill.allowedGlobalPhases.empty();
-        for (auto p : skill.allowedGlobalPhases) {
-            if (p == currentGlobalPhase_) { allowed = true; break; }
+    std::vector<int> validSkills;
+    for (size_t i = 0; i < mode.skillPool.size(); ++i) {
+        const auto& s = mode.skillPool[i];
+        bool pOk = s.allowedGlobalPhases.empty();
+        for (auto p : s.allowedGlobalPhases) if (p == currentGlobalPhase_) pOk = true;
+        if (pOk) {
+            float w = (float)s.weight;
+            if (s.name == lastSkillName_) w *= 0.3f;
+            totalSkillWeight += w;
+            validSkills.push_back((int)i);
         }
-        if (!allowed || skill.weight <= 0) continue;
-        float effectiveWeight = static_cast<float>(skill.weight);
-        if (!lastSkillName_.empty() && skill.name == lastSkillName_) {
-            effectiveWeight *= 0.2f;
-        }
-        if (effectiveWeight <= 0.0f) continue;
-        validSkillIndices.push_back(i);
-        validSkillWeights.push_back(effectiveWeight);
-        totalSkillWeight += effectiveWeight;
     }
-    if (validSkillIndices.empty()) { state_ = BossState::Normal; stateTimer_ = 0.0f; return; }
 
-    float rSkill = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * totalSkillWeight;
-    float skillSum = 0.0f;
-    int selectedSkillIdx = validSkillIndices[0];
-    for (int i = 0; i < validSkillIndices.size(); ++i) {
-        skillSum += validSkillWeights[i];
-        if (rSkill < skillSum) { selectedSkillIdx = validSkillIndices[i]; break; }
+    if (validSkills.empty()) { state_ = BossState::Normal; stateTimer_ = 0.0f; return; }
+
+    int skillIdx = validSkills[0];
+    float rS = (static_cast<float>(rand()) / RAND_MAX) * totalSkillWeight;
+    float sSum = 0.0f;
+    for (int idx : validSkills) {
+        float w = (float)mode.skillPool[idx].weight;
+        if (mode.skillPool[idx].name == lastSkillName_) w *= 0.3f;
+        sSum += w;
+        if (rS < sSum) { skillIdx = idx; break; }
     }
-    const auto& skill = mode.skillPool[selectedSkillIdx];
+
+    const auto& skill = mode.skillPool[skillIdx];
     lastSkillName_ = skill.name;
 
     executionQueue_.clear();
-    for (const auto& node : skill.sequence) { executionQueue_.push_back(node); }
-    state_ = BossState::Switching; stateTimer_ = 0.0f;
+    for (const auto& node : skill.sequence) executionQueue_.push_back(node);
+
+    state_ = BossState::Switching;
+    stateTimer_ = 0.0f;
     spine_.SetAnimation(mode.switchAnim.c_str(), false);
     RequestPattern(ActionPattern::Idle, true);
 }
 
 void Boss::TryNextComboAction() {
     if (executionQueue_.empty()) {
-        state_ = BossState::Returning; stateTimer_ = 0.0f;
+        state_ = BossState::Returning;
+        stateTimer_ = 0.0f;
         if (activeModeIndex_ >= 0) spine_.SetAnimation(modes_[activeModeIndex_].returnAnim.c_str(), false);
         RequestPattern(ActionPattern::Idle, true);
         return;
     }
     SkillNode node = executionQueue_.front();
     executionQueue_.pop_front();
-    if (node.action == ActionPattern::Wait) { waitingForCombo_ = true; comboTimer_ = node.duration; } else {
+
+    if (node.action == ActionPattern::Wait) {
+        waitingForCombo_ = true; comboTimer_ = node.duration;
+    } else {
         RequestPattern(node.action, true);
         if (node.duration > 0.0f) { waitingForCombo_ = true; comboTimer_ = node.duration; }
     }
 }
 
 void Boss::RequestPattern(ActionPattern next, bool ease) {
+    if (next == ActionPattern::GroundSlam) ease = false;
+
     if (ease) {
         pattern_ = ActionPattern::Changing;
         easeStartPos_ = position_;
         easeNextPattern_ = next;
-        easeDuration_ = 0.6f;
+        easeDuration_ = 0.3f;
         easeTime_ = 0.0f;
+
         if (next == ActionPattern::Rush) easeTargetPos_ = { 640.0f, 200.0f };
-        else if (next == ActionPattern::RingShot) easeTargetPos_ = { 640.0f, 300.0f };
-        else if (next == ActionPattern::FanShot || next == ActionPattern::CrossBurst) {
-            float y = 260.0f + static_cast<float>(rand() % 61);
-            easeTargetPos_ = { 640.0f, y };
-        } else if (next == ActionPattern::IcicleRain) {
-            float y = 140.0f + static_cast<float>(rand() % 41);
-            easeTargetPos_ = { 640.0f, y };
-        } else if (next == ActionPattern::IceMissile) {
-            easeTargetPos_ = { 640.0f, 220.0f };
-        } else if (next == ActionPattern::FireSpiral) {
-            easeTargetPos_ = { 640.0f, 260.0f };
-        } else if (next == ActionPattern::FlameRushBurst || next == ActionPattern::IceSkateRush) {
-            easeTargetPos_ = { 640.0f, 200.0f };
-        }
-        else easeTargetPos_ = { 640.0f, 230.0f }; // Idle return position
+        else if (next == ActionPattern::Apocalypse) { easeTargetPos_ = { 640.0f, 360.0f }; easeDuration_ = 0.6f; } else if (next == ActionPattern::ScatterShot) { easeTargetPos_ = { 640.0f, 300.0f }; easeDuration_ = 0.4f; } else easeTargetPos_ = { 640.0f, 230.0f };
     } else {
         pattern_ = next;
-        if (next == ActionPattern::Rush) rushStep_ = 0;
-        if (next == ActionPattern::RingShot) ringStep_ = 0;
-        if (next == ActionPattern::FanShot) fanShotStep_ = 0;
-        if (next == ActionPattern::CrossBurst) crossBurstStep_ = 0;
-        if (next == ActionPattern::IcicleRain) icicleSpawnTimer_ = 0.0f;
-        if (next == ActionPattern::IceMissile) { iceMissileStep_ = 0; iceMissileTotal_ = 0; }
-        if (next == ActionPattern::FireSpiral) { fireSpiralTimer_ = 0.0f; fireSpiralAngle_ = 0.0f; }
-        if (next == ActionPattern::FlameRushBurst) { flameRushStep_ = 0; flameBurstRemaining_ = 0; }
-        if (next == ActionPattern::IceSkateRush) { iceSkateStep_ = 0; iceSkateDropTimer_ = 0.0f; }
+
+        rushStep_ = 0; ringStep_ = 0; fanShotStep_ = 0;
+        crossBurstStep_ = 0; icicleSpawnTimer_ = 0.0f;
+        iceMissileStep_ = 0; fireSpiralTimer_ = 0.0f;
+        flameRushStep_ = 0; iceSkateStep_ = 0;
+        slamStep_ = 0; scatterStep_ = 0; apocalypseStep_ = 0;
     }
 }
 
-// ... Rush 技能使用变量 ...
 void Boss::PatternRush(float dt) {
     patternTime_ += dt;
     if (rushStep_ == 0) {
         position_.y -= 20.0f * dt;
-        float shake = std::sin(patternTime_ * 50.0f) * 5.0f;
-        spine_.transform.position.x = position_.x + shake;
-        if (patternTime_ > 0.8f) {
+        renderScale_.x = 1.3f; renderScale_.y = 0.7f;
+        if (particleSys_ && rand() % 5 == 0) particleSys_->PlayOneShot("BossCharge", position_, 1);
+
+        if (patternTime_ > 0.5f) {
             rushStep_ = 1; patternTime_ = 0.0f;
             if (target_) rushDir_ = Normalize(target_->GetPos() - position_);
             else rushDir_ = { 0, 1 };
-            HIKARI::CAMERA::ShakeParams camShake{};
-            camShake.durationSec = 0.35f;
-            camShake.ampX = 14.0f;
-            camShake.ampY = 6.0f;
-            camShake.freqX = 80.0f;
-            camShake.freqY = 20.0f;
-            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
-            HIKARI::CAMERA::ShakeEx(camShake);
-            HIKARI::HINPUT::SetPadVibration(0.6f, 0.6f, 0.2f);
+            ShakeScreenHeavy(0.3f);
         }
     } else if (rushStep_ == 1) {
-        // ★ 使用 rushSpeed_ 变量
         position_ += rushDir_ * rushSpeed_ * dt;
-        if (position_.x < -100 || position_.x > 1380 || position_.y > 800) {
+        if (position_.x < -200 || position_.x > 1480 || position_.y > 900 || position_.y < -200 || patternTime_ > 2.0f) {
             waitingForCombo_ = false; TryNextComboAction();
+            renderScale_ = { 1.0f, 1.0f };
         }
     }
 }
 
-// ... PatternRingShot ...
-void Boss::PatternRingShot(float dt) {
+void Boss::PatternGroundSlam(float dt) {
     patternTime_ += dt;
-    float interval = (difficulty_ == DifficultyLevel::Challenge) ? 0.15f : 0.2f;
-    if (patternTime_ > interval) {
-        patternTime_ -= interval;
-        ringStep_++;
-        if (bulletMgr_) {
-            int count = 18;
-            float step = 6.28318f / count;
-            float offset = ringStep_ * 0.1f;
-            for (int i = 0; i < count; ++i) {
-                float a = i * step + offset;
-                Bullet b; b.pos = position_; b.vel = { std::cos(a) * 260.f, std::sin(a) * 260.f }; b.isEnemy = true;
-                static BulletLinear lin; b.behavior = &lin;
-                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+
+    if (slamStep_ == 0) {
+        Vector2 targetPos = { 640.0f, -150.0f };
+        if (target_) targetPos.x = target_->GetPos().x;
+
+        position_ = LerpVec2(position_, targetPos, 0.1f);
+
+        if (patternTime_ > 0.5f) {
+            slamStep_ = 1;
+            patternTime_ = 0.0f;
+        }
+    } else if (slamStep_ == 1) {
+        position_.y += 1200.0f * dt;
+
+        if (position_.y >= 500.0f) {
+            position_.y = 500.0f;
+            ShakeScreenHeavy(0.5f);
+            if (particleSys_) particleSys_->PlayOneShot("BossImpact", position_, 50);
+
+            if (bulletMgr_) {
+                for (int i = 0; i < 20; ++i) {
+                    float a = (6.28f / 20.0f) * i;
+                    Bullet b; b.pos = position_; b.vel = { cos(a) * 400.0f, sin(a) * 400.0f }; b.isEnemy = true;
+                    static BulletLinear lin; b.behavior = &lin;
+                    bulletMgr_->Spawn(b, "e_fire");
+                }
+            }
+
+            slamStep_ = 2;
+            patternTime_ = 0.0f;
+        }
+    } else if (slamStep_ == 2) {
+        if (patternTime_ > 0.5f) {
+            TryNextComboAction();
+        }
+    }
+}
+
+void Boss::PatternScatterShot(float dt) {
+    patternTime_ += dt;
+
+    if (scatterStep_ == 0) {
+        if (patternTime_ > 0.2f) {
+            if (bulletMgr_) {
+                for (int k = 0; k < 5; ++k) {
+                    float angle = (rand() % 360) * 0.01745f;
+                    float speed = 200.0f + (rand() % 200);
+                    Bullet b; b.pos = position_; b.vel = { cos(angle) * speed, sin(angle) * speed }; b.isEnemy = true;
+                    static BulletLinear lin; b.behavior = &lin;
+                    bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+                }
+            }
+            ShakeScreenLight(0.1f);
+            scatterStep_++;
+            patternTime_ = 0.0f;
+        }
+    } else if (scatterStep_ < 5) {
+        if (patternTime_ > 0.15f) {
+            scatterStep_ = 0;
+            patternTime_ = 0.0f;
+        }
+    } else {
+        TryNextComboAction();
+    }
+}
+
+void Boss::PatternApocalypse(float dt) {
+    patternTime_ += dt;
+    if (apocalypseStep_ == 0) {
+        if (patternTime_ > 1.0f) {
+            apocalypseStep_ = 1; patternTime_ = 0.0f;
+            ShakeScreenHeavy(2.0f);
+        }
+    } else if (apocalypseStep_ == 1) {
+        apocalypseAngle_ += dt * 4.0f;
+        static float t = 0; t += dt;
+        if (t > 0.05f) {
+            t = 0;
+            if (bulletMgr_) {
+                for (int i = 0; i < 4; ++i) {
+                    float a = apocalypseAngle_ + i * 1.57f;
+                    Bullet b; b.pos = position_; b.vel = { cos(a) * 400.f, sin(a) * 400.f }; b.isEnemy = true;
+                    static BulletLinear lin; b.behavior = &lin;
+                    bulletMgr_->Spawn(b, "e_fire");
+                }
+                for (int i = 0; i < 4; ++i) {
+                    float a = -apocalypseAngle_ + i * 1.57f + 0.78f;
+                    Bullet b; b.pos = position_; b.vel = { cos(a) * 300.f, sin(a) * 300.f }; b.isEnemy = true;
+                    static BulletLinear lin; b.behavior = &lin;
+                    bulletMgr_->Spawn(b, "e_ice");
+                }
             }
         }
-        if (ringStep_ == 1) {
-            HIKARI::CAMERA::ShakeParams camShake{};
-            camShake.durationSec = 0.25f;
-            camShake.ampX = 8.0f;
-            camShake.ampY = 4.0f;
-            camShake.freqX = 60.0f;
-            camShake.freqY = 20.0f;
-            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
-            HIKARI::CAMERA::ShakeEx(camShake);
+        if (patternTime_ > 5.0f) {
+            apocalypseStep_ = 2; patternTime_ = 0.0f;
         }
-        int waves = (difficulty_ == DifficultyLevel::Challenge) ? 6 : 4;
-        if (ringStep_ >= waves) TryNextComboAction();
+    } else if (apocalypseStep_ == 2) {
+        if (patternTime_ > 0.5f) TryNextComboAction();
+    }
+}
+
+void Boss::PatternRingShot(float dt) {
+    patternTime_ += dt;
+    if (patternTime_ > 0.15f) {
+        patternTime_ = 0.0f;
+        ringStep_++;
+        if (bulletMgr_) {
+            int count = 24;
+            float step = 6.283f / count;
+            for (int i = 0; i < count; ++i) {
+                float a = i * step + ringStep_ * 0.1f;
+                Bullet b; b.pos = position_; b.vel = { cos(a) * 280.f, sin(a) * 280.f }; b.isEnemy = true;
+                static BulletLinear l; b.behavior = &l;
+                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+            }
+            ShakeScreenLight(0.1f);
+        }
+        if (ringStep_ >= 6) TryNextComboAction();
     }
 }
 
 void Boss::PatternFanShot(float dt) {
     patternTime_ += dt;
-    float interval = (currentGlobalPhase_ == GlobalPhase::Fire) ? 0.32f : 0.38f;
-    if (patternTime_ >= interval) {
-        patternTime_ -= interval;
+    if (patternTime_ > 0.3f) {
+        patternTime_ = 0.0f;
         fanShotStep_++;
-
         if (bulletMgr_ && target_) {
-            float angle = std::atan2(target_->GetPos().y - position_.y, target_->GetPos().x - position_.x);
-            int count = (currentGlobalPhase_ == GlobalPhase::Fire) ? 9 : 8;
-            float spread = (currentGlobalPhase_ == GlobalPhase::Fire) ? 1.05f : 0.85f;
-            float speed = (currentGlobalPhase_ == GlobalPhase::Fire) ? 380.0f : 300.0f;
-            float step = (count > 1) ? (spread / static_cast<float>(count - 1)) : 0.0f;
-            float start = angle - spread * 0.5f;
+            float baseA = std::atan2(target_->GetPos().y - position_.y, target_->GetPos().x - position_.x);
+            int count = 15;
+            float spread = 1.2f;
             for (int i = 0; i < count; ++i) {
-                float a = start + step * i;
-                Bullet b; b.pos = position_; b.vel = { std::cos(a) * speed, std::sin(a) * speed }; b.isEnemy = true;
-                static BulletLinear lin; b.behavior = &lin;
+                float a = baseA - spread * 0.5f + (spread / (count - 1)) * i;
+                Bullet b; b.pos = position_; b.vel = { cos(a) * 350.f, sin(a) * 350.f }; b.isEnemy = true;
+                static BulletLinear l; b.behavior = &l;
                 bulletMgr_->Spawn(b, GetBulletStyleForPhase());
             }
+            ShakeScreenLight(0.1f);
         }
-
-        if (fanShotStep_ == 1) {
-            HIKARI::CAMERA::ShakeParams camShake{};
-            camShake.durationSec = 0.2f;
-            camShake.ampX = 6.0f;
-            camShake.ampY = 3.0f;
-            camShake.freqX = 70.0f;
-            camShake.freqY = 20.0f;
-            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
-            HIKARI::CAMERA::ShakeEx(camShake);
-        }
-
-        int waves = (currentGlobalPhase_ == GlobalPhase::Fire) ? 3 : 2;
-        if (fanShotStep_ >= waves) TryNextComboAction();
+        if (fanShotStep_ >= 3) TryNextComboAction();
     }
 }
-
 void Boss::PatternCrossBurst(float dt) {
     patternTime_ += dt;
-    float interval = 0.35f;
-    if (patternTime_ >= interval) {
-        patternTime_ -= interval;
-        crossBurstStep_++;
-
+    if (patternTime_ > 0.25f) {
+        patternTime_ = 0; crossBurstStep_++;
         if (bulletMgr_) {
-            int count = 8;
-            float speed = 280.0f;
-            float base = crossBurstStep_ * 0.2f;
-            for (int i = 0; i < count; ++i) {
-                float a = base + (6.28318f / count) * i;
-                Bullet b; b.pos = position_; b.vel = { std::cos(a) * speed, std::sin(a) * speed }; b.isEnemy = true;
-                static BulletLinear lin; b.behavior = &lin;
-                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+            int c = 16;
+            for (int i = 0; i < c; ++i) {
+                float a = i * (6.28f / c) + crossBurstStep_ * 0.2f;
+                Bullet b; b.pos = position_; b.vel = { cos(a) * 320.f, sin(a) * 320.f }; b.isEnemy = true;
+                static BulletLinear l; b.behavior = &l; bulletMgr_->Spawn(b, GetBulletStyleForPhase());
             }
+            ShakeScreenLight(0.1f);
         }
-
-        if (crossBurstStep_ == 1) {
-            HIKARI::CAMERA::ShakeParams camShake{};
-            camShake.durationSec = 0.25f;
-            camShake.ampX = 9.0f;
-            camShake.ampY = 4.0f;
-            camShake.freqX = 70.0f;
-            camShake.freqY = 20.0f;
-            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
-            HIKARI::CAMERA::ShakeEx(camShake);
-        }
-
-        if (crossBurstStep_ >= 2) TryNextComboAction();
+        if (crossBurstStep_ >= 3) TryNextComboAction();
     }
 }
-
 void Boss::PatternIcicleRain(float dt) {
-    patternTime_ += dt;
-    icicleSpawnTimer_ -= dt;
-    const float duration = 2.0f;
-    if (icicleSpawnTimer_ <= 0.0f) {
-        icicleSpawnTimer_ = (difficulty_ == DifficultyLevel::Challenge) ? 0.08f : 0.1f;
+    patternTime_ += dt; icicleSpawnTimer_ -= dt;
+    if (icicleSpawnTimer_ <= 0) {
+        icicleSpawnTimer_ = 0.05f;
         if (bulletMgr_) {
-            float x = 200.0f + static_cast<float>(rand() % 881);
-            float drift = -30.0f + static_cast<float>(rand() % 61);
-            float speed = 360.0f + static_cast<float>(rand() % 81);
-            Bullet b; b.pos = { x, -20.0f }; b.vel = { drift, speed }; b.isEnemy = true;
-            static BulletLinear lin; b.behavior = &lin;
-            bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+            float x = 50.f + rand() % 1180;
+            Bullet b; b.pos = { x,-50 }; b.vel = { 0, 450.f + rand() % 100 }; b.isEnemy = true;
+            static BulletLinear l; b.behavior = &l; bulletMgr_->Spawn(b, "e_ice");
         }
     }
-    if (patternTime_ <= dt) {
-        HIKARI::CAMERA::ShakeParams camShake{};
-        camShake.durationSec = 0.25f;
-        camShake.ampX = 6.0f;
-        camShake.ampY = 6.0f;
-        camShake.freqX = 40.0f;
-        camShake.freqY = 40.0f;
-        camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
-        HIKARI::CAMERA::ShakeEx(camShake);
-    }
-    if (patternTime_ >= duration) {
-        TryNextComboAction();
-    }
+    if (patternTime_ > 2.5f) TryNextComboAction();
 }
-
 void Boss::PatternIceMissile(float dt) {
     patternTime_ += dt;
-    float interval = (difficulty_ == DifficultyLevel::Challenge) ? 0.25f : 0.3f;
-    if (iceMissileTotal_ == 0) {
-        iceMissileTotal_ = 2 + (rand() % 3);
-    }
-    if (patternTime_ >= interval) {
-        patternTime_ -= interval;
-        if (iceMissileStep_ < iceMissileTotal_) {
-            if (bulletMgr_ && target_) {
-                Vector2 dir = Normalize(target_->GetPos() - position_);
-                Bullet b; b.pos = position_; b.vel = dir * 160.0f; b.acc = dir * 120.0f; b.isEnemy = true;
-                static BulletAccel accel; b.behavior = &accel;
-                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
-            }
-            iceMissileStep_++;
+    if (iceMissileTotal_ == 0) iceMissileTotal_ = 5;
+    if (patternTime_ > 0.2f) {
+        patternTime_ = 0; iceMissileStep_++;
+        if (bulletMgr_ && target_) {
+            Vector2 d = Normalize(target_->GetPos() - position_);
+            Bullet b; b.pos = position_; b.vel = d * 200.f; b.acc = d * 150.f; b.isEnemy = true;
+            static BulletAccel l; b.behavior = &l; bulletMgr_->Spawn(b, "e_ice");
+            ShakeScreenLight(0.1f);
         }
-        if (iceMissileStep_ == 1) {
-            HIKARI::CAMERA::ShakeParams camShake{};
-            camShake.durationSec = 0.22f;
-            camShake.ampX = 7.0f;
-            camShake.ampY = 4.0f;
-            camShake.freqX = 60.0f;
-            camShake.freqY = 20.0f;
-            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
-            HIKARI::CAMERA::ShakeEx(camShake);
-        }
-        if (iceMissileStep_ >= iceMissileTotal_) {
-            TryNextComboAction();
-        }
+        if (iceMissileStep_ >= iceMissileTotal_) TryNextComboAction();
     }
 }
-
 void Boss::PatternFireSpiral(float dt) {
-    patternTime_ += dt;
-    fireSpiralTimer_ -= dt;
-    float interval = (difficulty_ == DifficultyLevel::Challenge) ? 0.09f : 0.11f;
-    if (fireSpiralTimer_ <= 0.0f) {
-        fireSpiralTimer_ = interval;
+    patternTime_ += dt; fireSpiralTimer_ -= dt;
+    if (fireSpiralTimer_ <= 0) {
+        fireSpiralTimer_ = 0.06f;
+        fireSpiralAngle_ += 0.4f;
         if (bulletMgr_) {
-            int count = (difficulty_ == DifficultyLevel::Challenge) ? 4 : 3;
-            float spread = 0.25f;
-            float speed = 260.0f + static_cast<float>(rand() % 61);
-            for (int i = 0; i < count; ++i) {
-                float a = fireSpiralAngle_ + (i - (count - 1) * 0.5f) * spread;
-                Vector2 dir = { std::cos(a), std::sin(a) };
-                Bullet b; b.pos = position_; b.vel = dir * speed; b.acc = dir * 50.0f; b.isEnemy = true;
-                static BulletAccel accel; b.behavior = &accel;
-                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+            for (int i = 0; i < 4; ++i) {
+                float a = fireSpiralAngle_ + i * 1.57f;
+                Bullet b; b.pos = position_; b.vel = { cos(a) * 300.f, sin(a) * 300.f }; b.isEnemy = true;
+                static BulletLinear l; b.behavior = &l; bulletMgr_->Spawn(b, "e_fire");
             }
         }
-        fireSpiralAngle_ += 0.35f;
     }
-    if (patternTime_ <= dt) {
-        HIKARI::CAMERA::ShakeParams camShake{};
-        camShake.durationSec = 0.25f;
-        camShake.ampX = 8.0f;
-        camShake.ampY = 5.0f;
-        camShake.freqX = 70.0f;
-        camShake.freqY = 20.0f;
-        camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
-        HIKARI::CAMERA::ShakeEx(camShake);
-        HIKARI::HINPUT::SetPadVibration(0.5f, 0.5f, 0.15f);
-    }
-    if (patternTime_ >= 2.0f) {
-        TryNextComboAction();
-    }
+    if (patternTime_ > 2.5f) TryNextComboAction();
 }
-
 void Boss::PatternFlameRushBurst(float dt) {
     patternTime_ += dt;
     if (flameRushStep_ == 0) {
-        position_.y -= 20.0f * dt;
-        float shake = std::sin(patternTime_ * 50.0f) * 5.0f;
-        spine_.transform.position.x = position_.x + shake;
-        if (patternTime_ > 0.7f) {
-            flameRushStep_ = 1;
-            patternTime_ = 0.0f;
-            if (target_) rushDir_ = Normalize(target_->GetPos() - position_);
-            else rushDir_ = { 0, 1 };
-            HIKARI::CAMERA::ShakeParams camShake{};
-            camShake.durationSec = 0.35f;
-            camShake.ampX = 16.0f;
-            camShake.ampY = 6.0f;
-            camShake.freqX = 80.0f;
-            camShake.freqY = 20.0f;
-            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
-            HIKARI::CAMERA::ShakeEx(camShake);
-            HIKARI::HINPUT::SetPadVibration(0.8f, 0.8f, 0.25f);
+        position_.y -= 30.f * dt;
+        if (patternTime_ > 0.6f) {
+            flameRushStep_ = 1; patternTime_ = 0;
+            if (target_) rushDir_ = Normalize(target_->GetPos() - position_); else rushDir_ = { 0,1 };
+            ShakeScreenHeavy(0.4f);
         }
     } else if (flameRushStep_ == 1) {
         position_ += rushDir_ * rushSpeed_ * dt;
-        if (position_.x < -100 || position_.x > 1380 || position_.y > 800) {
-            flameRushStep_ = 2;
-            patternTime_ = 0.0f;
-            flameBurstRemaining_ = (currentGlobalPhase_ == GlobalPhase::Fire) ? 2 : 1;
-            position_ = { 640.0f, 200.0f };
-            HIKARI::CAMERA::ShakeParams camShake{};
-            camShake.durationSec = 0.3f;
-            camShake.ampX = 12.0f;
-            camShake.ampY = 8.0f;
-            camShake.freqX = 60.0f;
-            camShake.freqY = 30.0f;
-            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
-            HIKARI::CAMERA::ShakeEx(camShake);
+        if (position_.x < -100 || position_.x>1380 || position_.y > 800 || patternTime_ > 1.5f) {
+            flameRushStep_ = 2; patternTime_ = 0; flameBurstRemaining_ = 3;
+            position_ = { 640,200 }; ShakeScreenHeavy(0.5f);
+            if (particleSys_) particleSys_->PlayOneShot("BossImpact", position_, 1);
         }
     } else if (flameRushStep_ == 2) {
-        float interval = (currentGlobalPhase_ == GlobalPhase::Fire) ? 0.27f : 0.32f;
-        if (patternTime_ >= interval) {
-            patternTime_ = 0.0f;
+        if (patternTime_ > 0.25f) {
+            patternTime_ = 0; flameBurstRemaining_--;
             if (bulletMgr_) {
-                int minCount = (currentGlobalPhase_ == GlobalPhase::Fire) ? 18 : 10;
-                int maxCount = (currentGlobalPhase_ == GlobalPhase::Fire) ? 24 : 14;
-                int count = minCount + (rand() % (maxCount - minCount + 1));
-                float step = 6.28318f / static_cast<float>(count);
-                for (int i = 0; i < count; ++i) {
-                    float a = step * i;
-                    Bullet b; b.pos = position_; b.vel = { std::cos(a) * 360.f, std::sin(a) * 360.f }; b.isEnemy = true;
-                    static BulletLinear lin; b.behavior = &lin;
-                    bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+                int c = 30;
+                for (int i = 0; i < c; ++i) {
+                    float a = i * (6.28f / c);
+                    Bullet b; b.pos = position_; b.vel = { cos(a) * 400.f, sin(a) * 400.f }; b.isEnemy = true;
+                    static BulletLinear l; b.behavior = &l; bulletMgr_->Spawn(b, "e_fire");
                 }
+                ShakeScreenLight(0.2f);
             }
-            flameBurstRemaining_--;
-            if (flameBurstRemaining_ <= 0) {
-                TryNextComboAction();
-            }
+            if (flameBurstRemaining_ <= 0) TryNextComboAction();
         }
     }
 }
-
 void Boss::PatternIceSkateRush(float dt) {
     patternTime_ += dt;
     if (iceSkateStep_ == 0) {
-        position_.y -= 20.0f * dt;
-        float shake = std::sin(patternTime_ * 50.0f) * 5.0f;
-        spine_.transform.position.x = position_.x + shake;
-        if (patternTime_ > 0.7f) {
-            iceSkateStep_ = 1;
-            patternTime_ = 0.0f;
-            iceSkateDropTimer_ = 0.0f;
-            if (target_) rushDir_ = Normalize(target_->GetPos() - position_);
-            else rushDir_ = { 0, 1 };
-            HIKARI::CAMERA::ShakeParams camShake{};
-            camShake.durationSec = 0.35f;
-            camShake.ampX = 14.0f;
-            camShake.ampY = 6.0f;
-            camShake.freqX = 80.0f;
-            camShake.freqY = 20.0f;
-            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
-            HIKARI::CAMERA::ShakeEx(camShake);
-            HIKARI::HINPUT::SetPadVibration(0.7f, 0.7f, 0.2f);
+        position_.y -= 20.f * dt;
+        if (patternTime_ > 0.5f) {
+            iceSkateStep_ = 1; patternTime_ = 0;
+            if (target_) rushDir_ = Normalize(target_->GetPos() - position_); else rushDir_ = { 0,1 };
+            ShakeScreenHeavy(0.3f);
         }
     } else if (iceSkateStep_ == 1) {
         position_ += rushDir_ * rushSpeed_ * dt;
         iceSkateDropTimer_ -= dt;
-        if (iceSkateDropTimer_ <= 0.0f) {
-            iceSkateDropTimer_ = 0.08f;
+        if (iceSkateDropTimer_ <= 0) {
+            iceSkateDropTimer_ = 0.05f;
             if (bulletMgr_) {
-                Vector2 dropPos = position_ - rushDir_ * 30.0f;
-                float drift = -0.3f + static_cast<float>(rand() % 61) / 100.0f;
-                float angle = std::atan2(rushDir_.y, rushDir_.x) + 3.14159265f + drift;
-                Bullet b; b.pos = dropPos; b.vel = { std::cos(angle) * 220.f, std::sin(angle) * 220.f }; b.isEnemy = true;
-                static BulletLinear lin; b.behavior = &lin;
-                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+                Vector2 dPos = position_ - rushDir_ * 40.f;
+                Bullet b; b.pos = dPos;
+                float a = std::atan2(rushDir_.y, rushDir_.x) + 3.14f + (rand() % 100 - 50) * 0.01f;
+                b.vel = { cos(a) * 150.f, sin(a) * 150.f }; b.isEnemy = true;
+                static BulletLinear l; b.behavior = &l; bulletMgr_->Spawn(b, "e_ice");
             }
         }
-        if (position_.x < -100 || position_.x > 1380 || position_.y > 800) {
-            TryNextComboAction();
-        }
+        if (position_.x < -100 || position_.x>1380 || position_.y > 800 || patternTime_ > 2.0f) TryNextComboAction();
     }
 }
 
 std::string Boss::GetBulletStyleForPhase() const {
     switch (currentGlobalPhase_) {
-    case GlobalPhase::Ice:
-        return "e_ice";
-    case GlobalPhase::Fire:
-        return "e_fire";
-    case GlobalPhase::Normal:
-    default:
-        return "e_normal";
+    case GlobalPhase::Ice: return "e_ice";
+    case GlobalPhase::Fire: return "e_fire";
+    case GlobalPhase::Final: return "e_fire";
+    case GlobalPhase::Normal: default: return "e_normal";
     }
 }
 
 void Boss::Draw() {
-
     bool useIceFire = (iceProgress_ > 0.0f || fireProgress_ > 0.0f);
     bool useHit = (hitFlashTimer_ > 0.0f);
 
-    if (useHit) {
-        HIKARI::POST::PostSystem::BeginLayer(hitChain_, 0, 0, 0, 0);
-    }
-
-    if (useIceFire) {
-        HIKARI::POST::PostSystem::BeginLayer(bossChain_, 0, 0, 0, 0);
-    }
+    if (useHit) HIKARI::POST::PostSystem::BeginLayer(hitChain_, 0, 0, 0, 0);
+    if (useIceFire) HIKARI::POST::PostSystem::BeginLayer(bossChain_, 0, 0, 0, 0);
 
     spine_.Draw();
 
-    if (useIceFire) {
-        HIKARI::POST::PostSystem::EndLayer();
-    }
-
-    if (useHit) {
-        HIKARI::POST::PostSystem::EndLayer();
-    }
+    if (useIceFire) HIKARI::POST::PostSystem::EndLayer();
+    if (useHit) HIKARI::POST::PostSystem::EndLayer();
 }
 
 void Boss::TakeDamage(float amount) {
@@ -1051,7 +909,7 @@ void Boss::TakeDamage(float amount) {
     hp_ -= amount;
     hitFlashTimer_ = 0.8f;
     if (state_ != BossState::Intro && state_ != BossState::Dead) {
-        anim_.PlayShakeEx(15.0f, 2.0f, 0.0f, 10.0f, 8.0f, 0.0f, 0.1f,HIKARI::ANIM::EASE::OutQuad);
+        anim_.PlayShakeEx(10.0f, 2.0f, 0.0f, 10.0f, 8.0f, 0.0f, 0.1f, HIKARI::ANIM::EASE::OutQuad);
     }
     hurtTimer_ = 0.1f;
     if (hp_ <= 0) { hp_ = 0; state_ = BossState::Dead; }

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "IScene.h"
-
+#include "HIKARI.h"
 class ScrollBackground;
 
 class Scene_Title : public IScene
@@ -19,4 +19,6 @@ public:
 private:
     ScrollBackground& bg_;
     bool requested_ = false;
+    HIKARI::SpineActor spineAnimation_;
+    HIKARI::SpineActor spineAnimation_2;
 };

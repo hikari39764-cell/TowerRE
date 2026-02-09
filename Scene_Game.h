@@ -34,4 +34,5 @@ private:
     Boss boss_;
     GameHUD hud_;
     bool requestedResult_ = false;
+	HIKARI::PARTICLE::ParticleSystem particleSys_;
 };

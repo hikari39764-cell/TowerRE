@@ -11,7 +11,7 @@ namespace GAMECFG {
     static const float kPlayerSpeedStep = 60.0f;
     static const int   kPlayerMaxSpeedLv = 5;
 
-    static const int   kPlayerMaxHp = 5;
+    static const int   kPlayerMaxHp = 500;
 
     static const float kShotIntervalBase = 0.10f;
     static const int   kPlayerMaxShotLv = 5;

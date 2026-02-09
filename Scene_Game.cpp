@@ -37,7 +37,7 @@ void Scene_Game::OnEnter()
     bullets_.Init();
     requestedResult_ = false;
 
-    boss_.Init(&player_, &bullets_);
+    boss_.Init(&player_, &bullets_,&particleSys_);
     boss_.SetPhaseChangeCallback([this](GlobalPhase phase) {
         if (phase == GlobalPhase::Ice) {
             bg_.BeginTransition(ScrollBackground::Stage::Ice);
@@ -61,6 +61,7 @@ void Scene_Game::OnExit()
 void Scene_Game::Update(float dt)
 {
     bg_.Update(dt);
+	particleSys_.Update(kDt);
 
     player_.Update(dt, bullets_);
 
@@ -135,5 +136,6 @@ void Scene_Game::Draw()
     bullets_.GetFxSystem().Draw();
     gAura.DrawLayer();
     player_.Draw();
+    particleSys_.Draw();
     hud_.Draw(player_, boss_);
 }

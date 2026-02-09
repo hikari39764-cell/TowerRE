@@ -167,17 +167,17 @@ void ScrollBackground::DrawStage_(Stage s)
         Transform2D t{};
         t.pivotPx = { 0,0 };
         t.position = { 0.0f, (float)y0 };
-        RENDERER::DrawSprite(bgKey, t, (float)GAMECFG::kGameW, (float)GAMECFG::kStageBgH);
+        RENDERER::DrawSprite(bgKey, t, (float)GAMECFG::kGameW, (float)GAMECFG::kStageBgH,HIKARI::RENDERER::CameraMode::Ignore);
 
         t.position = { 0.0f, (float)(y0 + GAMECFG::kStageBgH) };
-        RENDERER::DrawSprite(bgKey, t, (float)GAMECFG::kGameW, (float)GAMECFG::kStageBgH);
+        RENDERER::DrawSprite(bgKey, t, (float)GAMECFG::kGameW, (float)GAMECFG::kStageBgH, HIKARI::RENDERER::CameraMode::Ignore);
     }
 
     {
         Transform2D t{};
         t.pivotPx = { 0,0 };
         t.position = { 0.0f, 0.0f };
-        RENDERER::DrawSprite(fgKey, t, (float)GAMECFG::kGameW, (float)GAMECFG::kStageFgH);
+        RENDERER::DrawSprite(fgKey, t, (float)GAMECFG::kGameW, (float)GAMECFG::kStageFgH, HIKARI::RENDERER::CameraMode::Ignore);
     }
 }
 

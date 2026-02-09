@@ -6,6 +6,7 @@
 #include "MagicAnimeGlobalFX.h"
 #include "SceneManager.h"
 #include "Scene_Game.h"
+#include "Scene_Result.h"
 #include "Scene_Title.h"
 #include "ScrollBackground.h"
 
@@ -33,6 +34,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     SceneManager mgr;
     mgr.Register(SceneId::Title, std::make_unique<Scene_Title>(gBg));
     mgr.Register(SceneId::Game, std::make_unique<Scene_Game>(gBg));
+    mgr.Register(SceneId::Result, std::make_unique<Scene_Result>());
     mgr.Boot(SceneId::Title);
 
     while (Novice::ProcessMessage() == 0) {

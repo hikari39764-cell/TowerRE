@@ -33,4 +33,5 @@ private:
     PlayerAuraLayer gAura;
     Boss boss_;
     GameHUD hud_;
+    bool requestedResult_ = false;
 };

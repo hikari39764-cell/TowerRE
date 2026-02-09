@@ -28,6 +28,13 @@ enum class ActionPattern {
     Idle,       // 待机/回中
     Rush,       // 技能：冲撞
     RingShot,   // 技能：环形弹幕
+    FanShot,    // 技能：扇形弹
+    CrossBurst, // 技能：十字/交叉弹
+    IcicleRain, // 技能：冰锥雨
+    IceMissile, // 技能：冰导弹齐射
+    FireSpiral, // 技能：火焰螺旋散弹
+    FlameRushBurst, // 技能：冲撞后爆发
+    IceSkateRush,   // 技能：冲撞冰尾迹
     Changing,   // 位置插值 (内部使用)
     Wait        // 等待
 };
@@ -54,6 +61,7 @@ struct SkillNode {
 struct SkillDef {
     std::string name;
     int weight;
+    std::vector<GlobalPhase> allowedGlobalPhases;
     std::vector<SkillNode> sequence;
 };
 
@@ -92,6 +100,7 @@ public:
     float GetHp() const { return hp_; }
     float GetMaxHp() const { return maxHp_; }
     GlobalPhase GetGlobalPhase() const { return currentGlobalPhase_; }
+    bool IsDead() const;
 
     // 伤害与碰撞
     void TakeDamage(float amount);
@@ -113,10 +122,18 @@ private:
     // --- 行为实现 ---
     void UpdateNormalBehavior(float dt);// 平A逻辑 (受 GlobalPhase 影响)
     void FireNormalBarrage();           // 发射平A弹幕
+    std::string GetBulletStyleForPhase() const;
 
     // 具体技能动作
     void PatternRush(float dt);
     void PatternRingShot(float dt);
+    void PatternFanShot(float dt);
+    void PatternCrossBurst(float dt);
+    void PatternIcicleRain(float dt);
+    void PatternIceMissile(float dt);
+    void PatternFireSpiral(float dt);
+    void PatternFlameRushBurst(float dt);
+    void PatternIceSkateRush(float dt);
     void RequestPattern(ActionPattern next, bool ease = true);
 
 private:
@@ -170,6 +187,7 @@ private:
     std::deque<SkillNode> executionQueue_;
     bool waitingForCombo_ = false;
     float comboTimer_ = 0.0f;
+    std::string lastSkillName_;
 
     // 动作控制
     ActionPattern pattern_ = ActionPattern::Idle;
@@ -189,5 +207,15 @@ private:
     int rushStep_ = 0;
     Vector2 rushDir_{};
     int ringStep_ = 0;
+    int fanShotStep_ = 0;
+    int crossBurstStep_ = 0;
+    float icicleSpawnTimer_ = 0.0f;
+    int iceMissileStep_ = 0;
+    int iceMissileTotal_ = 0;
+    float fireSpiralTimer_ = 0.0f;
+    float fireSpiralAngle_ = 0.0f;
+    int flameRushStep_ = 0;
+    int flameBurstRemaining_ = 0;
+    float iceSkateDropTimer_ = 0.0f;
+    int iceSkateStep_ = 0;
 };
-

@@ -54,6 +54,7 @@ void Boss::Init(Player* target, BulletManager* bulletMgr) {
 
     currentGlobalPhase_ = GlobalPhase::Normal;
     activeModeIndex_ = -1;
+    lastSkillName_.clear();
 
     // 重置阶段触发器
     for (int i = 0; i < 4; i++) phaseTriggered_[i] = false;
@@ -98,16 +99,20 @@ void Boss::InitModes() {
     meleeMode.modeIdleAnim = "idle1";
     meleeMode.returnAnim = "returnPhase1";
     meleeMode.weight = 50;
-    meleeMode.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Final };
+    meleeMode.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire };
+#if 0
+    meleeMode.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire, GlobalPhase::Final };
+#endif
 
-    // Skill: Rush
-    SkillDef rushSkill;
-    rushSkill.name = "Rush Attack";
-    rushSkill.weight = 100;
+    // Skill: Rush Combo
+    SkillDef rushCombo;
+    rushCombo.name = "Rush Combo";
+    rushCombo.weight = 35;
+    rushCombo.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice };
 
     // ★ 难度差异：Challenge 模式下 Rush 连撞3次，Normal 撞2次
     if (difficulty_ == DifficultyLevel::Challenge) {
-        rushSkill.sequence = {
+        rushCombo.sequence = {
             { ActionPattern::Rush, 0.0f },
             { ActionPattern::Wait, 0.3f }, // 等待更短
             { ActionPattern::Rush, 0.0f },
@@ -115,13 +120,37 @@ void Boss::InitModes() {
             { ActionPattern::Rush, 0.0f }
         };
     } else {
-        rushSkill.sequence = {
+        rushCombo.sequence = {
             { ActionPattern::Rush, 0.0f },
             { ActionPattern::Wait, 0.5f },
             { ActionPattern::Rush, 0.0f }
         };
     }
-    meleeMode.skillPool.push_back(rushSkill);
+    meleeMode.skillPool.push_back(rushCombo);
+
+    // Skill: Flame Rush Burst (Normal)
+    SkillDef flameRushBurst;
+    flameRushBurst.name = "Flame Rush Burst";
+    flameRushBurst.weight = 25;
+    flameRushBurst.allowedGlobalPhases = { GlobalPhase::Normal };
+    flameRushBurst.sequence = { { ActionPattern::FlameRushBurst, 0.0f } };
+    meleeMode.skillPool.push_back(flameRushBurst);
+
+    // Skill: Ice Skate Rush
+    SkillDef iceSkateRush;
+    iceSkateRush.name = "Ice Skate Rush";
+    iceSkateRush.weight = 20;
+    iceSkateRush.allowedGlobalPhases = { GlobalPhase::Ice };
+    iceSkateRush.sequence = { { ActionPattern::IceSkateRush, 0.0f } };
+    meleeMode.skillPool.push_back(iceSkateRush);
+
+    // Skill: Flame Rush Burst (Fire)
+    SkillDef flameRushBurstFire;
+    flameRushBurstFire.name = "Flame Rush Burst+";
+    flameRushBurstFire.weight = 30;
+    flameRushBurstFire.allowedGlobalPhases = { GlobalPhase::Fire };
+    flameRushBurstFire.sequence = { { ActionPattern::FlameRushBurst, 0.0f } };
+    meleeMode.skillPool.push_back(flameRushBurstFire);
     modes_.push_back(meleeMode);
 
     // --- Magic Form ---
@@ -131,14 +160,82 @@ void Boss::InitModes() {
     magicMode.modeIdleAnim = "idle2";
     magicMode.returnAnim = "returnPhase2";
     magicMode.weight = 50;
-    magicMode.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Fire, GlobalPhase::Final };
+    magicMode.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire };
+#if 0
+    magicMode.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire, GlobalPhase::Final };
+#endif
 
-    // Skill: Ring Shot
+    // Skill: Fan Shot (Normal)
+    SkillDef fanShot;
+    fanShot.name = "Fan Shot";
+    fanShot.weight = 25;
+    fanShot.allowedGlobalPhases = { GlobalPhase::Normal };
+    fanShot.sequence = { { ActionPattern::FanShot, 0.0f } };
+    magicMode.skillPool.push_back(fanShot);
+
+    // Skill: Cross Burst
+    SkillDef crossBurst;
+    crossBurst.name = "Cross Burst";
+    crossBurst.weight = 20;
+    crossBurst.allowedGlobalPhases = { GlobalPhase::Normal };
+    crossBurst.sequence = { { ActionPattern::CrossBurst, 0.0f } };
+    magicMode.skillPool.push_back(crossBurst);
+
+    // Skill: Ring Shot (Normal)
     SkillDef ringSkill;
     ringSkill.name = "Ring Barrage";
-    ringSkill.weight = 100;
+    ringSkill.weight = 20;
+    ringSkill.allowedGlobalPhases = { GlobalPhase::Normal };
     ringSkill.sequence = { { ActionPattern::RingShot, 0.0f } };
     magicMode.skillPool.push_back(ringSkill);
+
+    // Skill: Icicle Rain
+    SkillDef icicleRain;
+    icicleRain.name = "Icicle Rain";
+    icicleRain.weight = 35;
+    icicleRain.allowedGlobalPhases = { GlobalPhase::Ice };
+    icicleRain.sequence = { { ActionPattern::IcicleRain, 0.0f } };
+    magicMode.skillPool.push_back(icicleRain);
+
+    // Skill: Ice Missiles
+    SkillDef iceMissile;
+    iceMissile.name = "Ice Missiles";
+    iceMissile.weight = 30;
+    iceMissile.allowedGlobalPhases = { GlobalPhase::Ice };
+    iceMissile.sequence = { { ActionPattern::IceMissile, 0.0f } };
+    magicMode.skillPool.push_back(iceMissile);
+
+    // Skill: Ring Shot (Ice)
+    SkillDef ringSkillIce;
+    ringSkillIce.name = "Ring Barrage (Ice)";
+    ringSkillIce.weight = 15;
+    ringSkillIce.allowedGlobalPhases = { GlobalPhase::Ice };
+    ringSkillIce.sequence = { { ActionPattern::RingShot, 0.0f } };
+    magicMode.skillPool.push_back(ringSkillIce);
+
+    // Skill: Fire Spiral
+    SkillDef fireSpiral;
+    fireSpiral.name = "Fire Spiral";
+    fireSpiral.weight = 40;
+    fireSpiral.allowedGlobalPhases = { GlobalPhase::Fire };
+    fireSpiral.sequence = { { ActionPattern::FireSpiral, 0.0f } };
+    magicMode.skillPool.push_back(fireSpiral);
+
+    // Skill: Fan Shot (Fire)
+    SkillDef fanShotFire;
+    fanShotFire.name = "Fan Shot (Fire)";
+    fanShotFire.weight = 20;
+    fanShotFire.allowedGlobalPhases = { GlobalPhase::Fire };
+    fanShotFire.sequence = { { ActionPattern::FanShot, 0.0f } };
+    magicMode.skillPool.push_back(fanShotFire);
+
+    // Skill: Ring Shot (Fire)
+    SkillDef ringSkillFire;
+    ringSkillFire.name = "Ring Barrage (Fire)";
+    ringSkillFire.weight = 10;
+    ringSkillFire.allowedGlobalPhases = { GlobalPhase::Fire };
+    ringSkillFire.sequence = { { ActionPattern::RingShot, 0.0f } };
+    magicMode.skillPool.push_back(ringSkillFire);
     modes_.push_back(magicMode);
 }
 
@@ -275,9 +372,23 @@ void Boss::UpdateState(float dt) {
                     patternTime_ = 0.0f;
                     if (pattern_ == ActionPattern::Rush) rushStep_ = 0;
                     if (pattern_ == ActionPattern::RingShot) ringStep_ = 0;
+                    if (pattern_ == ActionPattern::FanShot) fanShotStep_ = 0;
+                    if (pattern_ == ActionPattern::CrossBurst) crossBurstStep_ = 0;
+                    if (pattern_ == ActionPattern::IcicleRain) { icicleSpawnTimer_ = 0.0f; }
+                    if (pattern_ == ActionPattern::IceMissile) { iceMissileStep_ = 0; iceMissileTotal_ = 0; }
+                    if (pattern_ == ActionPattern::FireSpiral) { fireSpiralTimer_ = 0.0f; fireSpiralAngle_ = 0.0f; }
+                    if (pattern_ == ActionPattern::FlameRushBurst) { flameRushStep_ = 0; flameBurstRemaining_ = 0; }
+                    if (pattern_ == ActionPattern::IceSkateRush) { iceSkateStep_ = 0; iceSkateDropTimer_ = 0.0f; }
                 }
             } else if (pattern_ == ActionPattern::Rush) PatternRush(dt);
             else if (pattern_ == ActionPattern::RingShot) PatternRingShot(dt);
+            else if (pattern_ == ActionPattern::FanShot) PatternFanShot(dt);
+            else if (pattern_ == ActionPattern::CrossBurst) PatternCrossBurst(dt);
+            else if (pattern_ == ActionPattern::IcicleRain) PatternIcicleRain(dt);
+            else if (pattern_ == ActionPattern::IceMissile) PatternIceMissile(dt);
+            else if (pattern_ == ActionPattern::FireSpiral) PatternFireSpiral(dt);
+            else if (pattern_ == ActionPattern::FlameRushBurst) PatternFlameRushBurst(dt);
+            else if (pattern_ == ActionPattern::IceSkateRush) PatternIceSkateRush(dt);
         }
         break;
 
@@ -349,7 +460,10 @@ void Boss::CheckGlobalPhase() {
     GlobalPhase next = currentGlobalPhase_;
 
     // 检查阈值
-    if (!phaseTriggered_[1] && p <= 0.70f) { next = GlobalPhase::Ice; phaseTriggered_[1] = true; } else if (!phaseTriggered_[2] && p <= 0.40f) { next = GlobalPhase::Fire; phaseTriggered_[2] = true; } else if (!phaseTriggered_[3] && p <= 0.10f) { next = GlobalPhase::Final; phaseTriggered_[3] = true; }
+    if (!phaseTriggered_[1] && p <= 0.70f) { next = GlobalPhase::Ice; phaseTriggered_[1] = true; } else if (!phaseTriggered_[2] && p <= 0.40f) { next = GlobalPhase::Fire; phaseTriggered_[2] = true; }
+#if 0
+    else if (!phaseTriggered_[3] && p <= 0.10f) { next = GlobalPhase::Final; phaseTriggered_[3] = true; }
+#endif
 
     if (next != currentGlobalPhase_) {
         currentGlobalPhase_ = next;
@@ -380,8 +494,17 @@ void Boss::UpdateNormalBehavior(float dt) {
     normalMoveTime_ += dt;
     shootTimer_ -= dt;
 
+    float baseDuration = 4.5f;
+    if (currentGlobalPhase_ == GlobalPhase::Ice) baseDuration = 3.5f;
+    if (currentGlobalPhase_ == GlobalPhase::Fire) baseDuration = 2.7f;
+    if (difficulty_ == DifficultyLevel::Challenge) baseDuration *= 0.75f;
+    normalDuration_ = baseDuration;
+
     // ★ 使用 moveSpeed_ 变量
-    float speed = (currentGlobalPhase_ == GlobalPhase::Final) ? 2.0f : 1.0f;
+    float speed = 1.0f;
+#if 0
+    if (currentGlobalPhase_ == GlobalPhase::Final) speed = 2.0f;
+#endif
     float ampX = moveSpeed_ * 2.5f; // 根据 moveSpeed 调整幅度
     float ampY = moveSpeed_ * 0.5f;
 
@@ -395,7 +518,9 @@ void Boss::UpdateNormalBehavior(float dt) {
         float baseCd = 1.2f;
         if (currentGlobalPhase_ == GlobalPhase::Ice) baseCd = 1.0f;
         if (currentGlobalPhase_ == GlobalPhase::Fire) baseCd = 0.7f;
+#if 0
         if (currentGlobalPhase_ == GlobalPhase::Final) baseCd = 0.4f;
+#endif
 
         // ★ 难度影响射速
         if (difficulty_ == DifficultyLevel::Challenge) baseCd *= 0.7f; // Challenge 射得更快
@@ -411,50 +536,84 @@ void Boss::UpdateNormalBehavior(float dt) {
 
 void Boss::FireNormalBarrage() {
     if (!bulletMgr_ || !target_) return;
+    const std::string styleName = GetBulletStyleForPhase();
     if (currentGlobalPhase_ == GlobalPhase::Normal) {
         Vector2 dir = Normalize(target_->GetPos() - position_);
         Bullet b; b.pos = position_; b.vel = dir * 400.0f; b.isEnemy = true;
         static BulletLinear lin; b.behavior = &lin;
-        bulletMgr_->Spawn(b, "normal");
+        bulletMgr_->Spawn(b, styleName);
     } else if (currentGlobalPhase_ == GlobalPhase::Ice) {
         float angle = std::atan2(target_->GetPos().y - position_.y, target_->GetPos().x - position_.x);
         for (int i = -1; i <= 1; ++i) {
             float a = angle + i * 0.3f;
             Bullet b; b.pos = position_; b.vel = { std::cos(a) * 350.f, std::sin(a) * 350.f }; b.isEnemy = true;
             static BulletLinear lin; b.behavior = &lin;
-            bulletMgr_->Spawn(b, "normal");
+            bulletMgr_->Spawn(b, styleName);
         }
     } else {
         static float spinA = 0.0f; spinA += 0.5f;
         Bullet b; b.pos = position_; b.vel = { std::cos(spinA) * 500.f, std::sin(spinA) * 500.f }; b.isEnemy = true;
         static BulletLinear lin; b.behavior = &lin;
-        bulletMgr_->Spawn(b, "normal");
+        bulletMgr_->Spawn(b, styleName);
     }
 }
 
 void Boss::SelectModeAndSkill() {
     std::vector<int> validModeIndices;
-    int totalWeight = 0;
+    float totalWeight = 0.0f;
     for (int i = 0; i < modes_.size(); ++i) {
-        bool allowed = false;
+        bool allowed = modes_[i].allowedGlobalPhases.empty();
         for (auto p : modes_[i].allowedGlobalPhases) {
             if (p == currentGlobalPhase_) { allowed = true; break; }
         }
-        if (allowed) { validModeIndices.push_back(i); totalWeight += modes_[i].weight; }
+        if (allowed && modes_[i].weight > 0) {
+            validModeIndices.push_back(i);
+            totalWeight += static_cast<float>(modes_[i].weight);
+        }
     }
     if (validModeIndices.empty()) { state_ = BossState::Normal; stateTimer_ = 0.0f; return; }
-    int r = rand() % totalWeight;
-    int currentSum = 0;
+    float r = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * totalWeight;
+    float currentSum = 0.0f;
     int selectedIdx = validModeIndices[0];
     for (int idx : validModeIndices) {
-        currentSum += modes_[idx].weight;
+        currentSum += static_cast<float>(modes_[idx].weight);
         if (r < currentSum) { selectedIdx = idx; break; }
     }
     activeModeIndex_ = selectedIdx;
     const auto& mode = modes_[activeModeIndex_];
     if (mode.skillPool.empty()) { state_ = BossState::Normal; return; }
-    int skillIdx = rand() % mode.skillPool.size();
-    const auto& skill = mode.skillPool[skillIdx];
+
+    std::vector<int> validSkillIndices;
+    std::vector<float> validSkillWeights;
+    float totalSkillWeight = 0.0f;
+    for (int i = 0; i < mode.skillPool.size(); ++i) {
+        const auto& skill = mode.skillPool[i];
+        bool allowed = skill.allowedGlobalPhases.empty();
+        for (auto p : skill.allowedGlobalPhases) {
+            if (p == currentGlobalPhase_) { allowed = true; break; }
+        }
+        if (!allowed || skill.weight <= 0) continue;
+        float effectiveWeight = static_cast<float>(skill.weight);
+        if (!lastSkillName_.empty() && skill.name == lastSkillName_) {
+            effectiveWeight *= 0.2f;
+        }
+        if (effectiveWeight <= 0.0f) continue;
+        validSkillIndices.push_back(i);
+        validSkillWeights.push_back(effectiveWeight);
+        totalSkillWeight += effectiveWeight;
+    }
+    if (validSkillIndices.empty()) { state_ = BossState::Normal; stateTimer_ = 0.0f; return; }
+
+    float rSkill = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * totalSkillWeight;
+    float skillSum = 0.0f;
+    int selectedSkillIdx = validSkillIndices[0];
+    for (int i = 0; i < validSkillIndices.size(); ++i) {
+        skillSum += validSkillWeights[i];
+        if (rSkill < skillSum) { selectedSkillIdx = validSkillIndices[i]; break; }
+    }
+    const auto& skill = mode.skillPool[selectedSkillIdx];
+    lastSkillName_ = skill.name;
+
     executionQueue_.clear();
     for (const auto& node : skill.sequence) { executionQueue_.push_back(node); }
     state_ = BossState::Switching; stateTimer_ = 0.0f;
@@ -486,11 +645,31 @@ void Boss::RequestPattern(ActionPattern next, bool ease) {
         easeTime_ = 0.0f;
         if (next == ActionPattern::Rush) easeTargetPos_ = { 640.0f, 200.0f };
         else if (next == ActionPattern::RingShot) easeTargetPos_ = { 640.0f, 300.0f };
+        else if (next == ActionPattern::FanShot || next == ActionPattern::CrossBurst) {
+            float y = 260.0f + static_cast<float>(rand() % 61);
+            easeTargetPos_ = { 640.0f, y };
+        } else if (next == ActionPattern::IcicleRain) {
+            float y = 140.0f + static_cast<float>(rand() % 41);
+            easeTargetPos_ = { 640.0f, y };
+        } else if (next == ActionPattern::IceMissile) {
+            easeTargetPos_ = { 640.0f, 220.0f };
+        } else if (next == ActionPattern::FireSpiral) {
+            easeTargetPos_ = { 640.0f, 260.0f };
+        } else if (next == ActionPattern::FlameRushBurst || next == ActionPattern::IceSkateRush) {
+            easeTargetPos_ = { 640.0f, 200.0f };
+        }
         else easeTargetPos_ = { 640.0f, 230.0f }; // Idle return position
     } else {
         pattern_ = next;
         if (next == ActionPattern::Rush) rushStep_ = 0;
         if (next == ActionPattern::RingShot) ringStep_ = 0;
+        if (next == ActionPattern::FanShot) fanShotStep_ = 0;
+        if (next == ActionPattern::CrossBurst) crossBurstStep_ = 0;
+        if (next == ActionPattern::IcicleRain) icicleSpawnTimer_ = 0.0f;
+        if (next == ActionPattern::IceMissile) { iceMissileStep_ = 0; iceMissileTotal_ = 0; }
+        if (next == ActionPattern::FireSpiral) { fireSpiralTimer_ = 0.0f; fireSpiralAngle_ = 0.0f; }
+        if (next == ActionPattern::FlameRushBurst) { flameRushStep_ = 0; flameBurstRemaining_ = 0; }
+        if (next == ActionPattern::IceSkateRush) { iceSkateStep_ = 0; iceSkateDropTimer_ = 0.0f; }
     }
 }
 
@@ -530,11 +709,218 @@ void Boss::PatternRingShot(float dt) {
                 float a = i * step + offset;
                 Bullet b; b.pos = position_; b.vel = { std::cos(a) * 300.f, std::sin(a) * 300.f }; b.isEnemy = true;
                 static BulletLinear lin; b.behavior = &lin;
-                bulletMgr_->Spawn(b, "normal");
+                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
             }
         }
         int waves = (difficulty_ == DifficultyLevel::Challenge) ? 8 : 5;
         if (ringStep_ >= waves) TryNextComboAction();
+    }
+}
+
+void Boss::PatternFanShot(float dt) {
+    patternTime_ += dt;
+    float interval = (currentGlobalPhase_ == GlobalPhase::Fire) ? 0.3f : 0.35f;
+    if (patternTime_ >= interval) {
+        patternTime_ -= interval;
+        fanShotStep_++;
+
+        if (bulletMgr_ && target_) {
+            float angle = std::atan2(target_->GetPos().y - position_.y, target_->GetPos().x - position_.x);
+            int count = (currentGlobalPhase_ == GlobalPhase::Fire) ? 9 : 10;
+            float spread = (currentGlobalPhase_ == GlobalPhase::Fire) ? 1.2f : 0.9f;
+            float speed = (currentGlobalPhase_ == GlobalPhase::Fire) ? 420.0f : 320.0f;
+            float step = (count > 1) ? (spread / static_cast<float>(count - 1)) : 0.0f;
+            float start = angle - spread * 0.5f;
+            for (int i = 0; i < count; ++i) {
+                float a = start + step * i;
+                Bullet b; b.pos = position_; b.vel = { std::cos(a) * speed, std::sin(a) * speed }; b.isEnemy = true;
+                static BulletLinear lin; b.behavior = &lin;
+                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+            }
+        }
+
+        int waves = (currentGlobalPhase_ == GlobalPhase::Fire) ? 2 : 3;
+        if (fanShotStep_ >= waves) TryNextComboAction();
+    }
+}
+
+void Boss::PatternCrossBurst(float dt) {
+    patternTime_ += dt;
+    float interval = 0.35f;
+    if (patternTime_ >= interval) {
+        patternTime_ -= interval;
+        crossBurstStep_++;
+
+        if (bulletMgr_) {
+            int count = 8;
+            float speed = 320.0f;
+            float base = crossBurstStep_ * 0.2f;
+            for (int i = 0; i < count; ++i) {
+                float a = base + (6.28318f / count) * i;
+                Bullet b; b.pos = position_; b.vel = { std::cos(a) * speed, std::sin(a) * speed }; b.isEnemy = true;
+                static BulletLinear lin; b.behavior = &lin;
+                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+            }
+        }
+
+        if (crossBurstStep_ >= 3) TryNextComboAction();
+    }
+}
+
+void Boss::PatternIcicleRain(float dt) {
+    patternTime_ += dt;
+    icicleSpawnTimer_ -= dt;
+    const float duration = 2.2f;
+    if (icicleSpawnTimer_ <= 0.0f) {
+        icicleSpawnTimer_ = (difficulty_ == DifficultyLevel::Challenge) ? 0.07f : 0.09f;
+        if (bulletMgr_) {
+            float x = 200.0f + static_cast<float>(rand() % 881);
+            float drift = -40.0f + static_cast<float>(rand() % 81);
+            float speed = 420.0f + static_cast<float>(rand() % 101);
+            Bullet b; b.pos = { x, -20.0f }; b.vel = { drift, speed }; b.isEnemy = true;
+            static BulletLinear lin; b.behavior = &lin;
+            bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+        }
+    }
+    if (patternTime_ >= duration) {
+        TryNextComboAction();
+    }
+}
+
+void Boss::PatternIceMissile(float dt) {
+    patternTime_ += dt;
+    float interval = (difficulty_ == DifficultyLevel::Challenge) ? 0.22f : 0.26f;
+    if (iceMissileTotal_ == 0) {
+        iceMissileTotal_ = 3 + (rand() % 3);
+    }
+    if (patternTime_ >= interval) {
+        patternTime_ -= interval;
+        if (iceMissileStep_ < iceMissileTotal_) {
+            if (bulletMgr_ && target_) {
+                Vector2 dir = Normalize(target_->GetPos() - position_);
+                Bullet b; b.pos = position_; b.vel = dir * 180.0f; b.acc = dir * 140.0f; b.isEnemy = true;
+                static BulletAccel accel; b.behavior = &accel;
+                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+            }
+            iceMissileStep_++;
+        }
+        if (iceMissileStep_ >= iceMissileTotal_) {
+            TryNextComboAction();
+        }
+    }
+}
+
+void Boss::PatternFireSpiral(float dt) {
+    patternTime_ += dt;
+    fireSpiralTimer_ -= dt;
+    float interval = (difficulty_ == DifficultyLevel::Challenge) ? 0.08f : 0.1f;
+    if (fireSpiralTimer_ <= 0.0f) {
+        fireSpiralTimer_ = interval;
+        if (bulletMgr_) {
+            int count = (difficulty_ == DifficultyLevel::Challenge) ? 4 : 3;
+            float spread = 0.25f;
+            float speed = 300.0f + static_cast<float>(rand() % 81);
+            for (int i = 0; i < count; ++i) {
+                float a = fireSpiralAngle_ + (i - (count - 1) * 0.5f) * spread;
+                Vector2 dir = { std::cos(a), std::sin(a) };
+                Bullet b; b.pos = position_; b.vel = dir * speed; b.acc = dir * 60.0f; b.isEnemy = true;
+                static BulletAccel accel; b.behavior = &accel;
+                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+            }
+        }
+        fireSpiralAngle_ += 0.35f;
+    }
+    if (patternTime_ >= 2.0f) {
+        TryNextComboAction();
+    }
+}
+
+void Boss::PatternFlameRushBurst(float dt) {
+    patternTime_ += dt;
+    if (flameRushStep_ == 0) {
+        position_.y -= 20.0f * dt;
+        float shake = std::sin(patternTime_ * 50.0f) * 5.0f;
+        spine_.transform.position.x = position_.x + shake;
+        if (patternTime_ > 0.7f) {
+            flameRushStep_ = 1;
+            patternTime_ = 0.0f;
+            if (target_) rushDir_ = Normalize(target_->GetPos() - position_);
+            else rushDir_ = { 0, 1 };
+        }
+    } else if (flameRushStep_ == 1) {
+        position_ += rushDir_ * rushSpeed_ * dt;
+        if (position_.x < -100 || position_.x > 1380 || position_.y > 800) {
+            flameRushStep_ = 2;
+            patternTime_ = 0.0f;
+            flameBurstRemaining_ = (currentGlobalPhase_ == GlobalPhase::Fire) ? 2 : 1;
+            position_ = { 640.0f, 200.0f };
+        }
+    } else if (flameRushStep_ == 2) {
+        float interval = (currentGlobalPhase_ == GlobalPhase::Fire) ? 0.25f : 0.3f;
+        if (patternTime_ >= interval) {
+            patternTime_ = 0.0f;
+            if (bulletMgr_) {
+                int minCount = (currentGlobalPhase_ == GlobalPhase::Fire) ? 24 : 12;
+                int maxCount = (currentGlobalPhase_ == GlobalPhase::Fire) ? 32 : 16;
+                int count = minCount + (rand() % (maxCount - minCount + 1));
+                float step = 6.28318f / static_cast<float>(count);
+                for (int i = 0; i < count; ++i) {
+                    float a = step * i;
+                    Bullet b; b.pos = position_; b.vel = { std::cos(a) * 360.f, std::sin(a) * 360.f }; b.isEnemy = true;
+                    static BulletLinear lin; b.behavior = &lin;
+                    bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+                }
+            }
+            flameBurstRemaining_--;
+            if (flameBurstRemaining_ <= 0) {
+                TryNextComboAction();
+            }
+        }
+    }
+}
+
+void Boss::PatternIceSkateRush(float dt) {
+    patternTime_ += dt;
+    if (iceSkateStep_ == 0) {
+        position_.y -= 20.0f * dt;
+        float shake = std::sin(patternTime_ * 50.0f) * 5.0f;
+        spine_.transform.position.x = position_.x + shake;
+        if (patternTime_ > 0.7f) {
+            iceSkateStep_ = 1;
+            patternTime_ = 0.0f;
+            iceSkateDropTimer_ = 0.0f;
+            if (target_) rushDir_ = Normalize(target_->GetPos() - position_);
+            else rushDir_ = { 0, 1 };
+        }
+    } else if (iceSkateStep_ == 1) {
+        position_ += rushDir_ * rushSpeed_ * dt;
+        iceSkateDropTimer_ -= dt;
+        if (iceSkateDropTimer_ <= 0.0f) {
+            iceSkateDropTimer_ = 0.06f;
+            if (bulletMgr_) {
+                Vector2 dropPos = position_ - rushDir_ * 30.0f;
+                float drift = -0.3f + static_cast<float>(rand() % 61) / 100.0f;
+                float angle = std::atan2(rushDir_.y, rushDir_.x) + 3.14159265f + drift;
+                Bullet b; b.pos = dropPos; b.vel = { std::cos(angle) * 260.f, std::sin(angle) * 260.f }; b.isEnemy = true;
+                static BulletLinear lin; b.behavior = &lin;
+                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+            }
+        }
+        if (position_.x < -100 || position_.x > 1380 || position_.y > 800) {
+            TryNextComboAction();
+        }
+    }
+}
+
+std::string Boss::GetBulletStyleForPhase() const {
+    switch (currentGlobalPhase_) {
+    case GlobalPhase::Ice:
+        return "e_ice";
+    case GlobalPhase::Fire:
+        return "e_fire";
+    case GlobalPhase::Normal:
+    default:
+        return "e_normal";
     }
 }
 
@@ -575,4 +961,8 @@ void Boss::TakeDamage(float amount) {
 
 RectF Boss::GetAABB() const {
     return { position_.x - size_.x / 2, position_.y - size_.y / 2, size_.x, size_.y };
+}
+
+bool Boss::IsDead() const {
+    return state_ == BossState::Dead || hp_ <= 0.0f;
 }

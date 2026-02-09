@@ -6,6 +6,7 @@
 #include "Scene_Game.h"
 
 #include "HIKARI.h"
+#include "FadeTransition.h"
 #include "ScrollBackground.h"
 
 static bool CheckCollision(const Vector2& pos1, float r1, const RectF& rect2)
@@ -34,6 +35,7 @@ void Scene_Game::OnEnter()
     gAura.InitOnce();
     bullets_.ClearAll();
     bullets_.Init();
+    requestedResult_ = false;
 
     boss_.Init(&player_, &bullets_);
     boss_.SetPhaseChangeCallback([this](GlobalPhase phase) {
@@ -41,9 +43,12 @@ void Scene_Game::OnEnter()
             bg_.BeginTransition(ScrollBackground::Stage::Ice);
         } else if (phase == GlobalPhase::Fire) {
             bg_.BeginTransition(ScrollBackground::Stage::Fire);
-        } else if (phase == GlobalPhase::Final) {
+        }
+#if 0
+        else if (phase == GlobalPhase::Final) {
             bg_.SetStage(ScrollBackground::Stage::Final);
         }
+#endif
     });
 
     player_.Init();
@@ -102,6 +107,14 @@ void Scene_Game::Update(float dt)
     if (CheckCollision(playerPos, playerRadius, bossRect)) {
         Vector2 bossPos = boss_.GetPos();
         player_.OnHit(&bossPos, 800.0f);
+    }
+
+    if (!requestedResult_ && boss_.IsDead()) {
+        requestedResult_ = true;
+        bullets_.ClearAll();
+        if (mgr_ != nullptr) {
+            mgr_->RequestChange(SceneId::Result, std::make_unique<FadeTransition>(0.25f, 0.25f));
+        }
     }
 }
 

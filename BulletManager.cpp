@@ -16,6 +16,15 @@ namespace {
     const std::string kPathBeam = "./images/PlayerBullets/beam.png";
     const std::string kPathBeamPlus = "./images/PlayerBullets/beamPlus.png";
     const std::string kPathBeamFinal = "./images/PlayerBullets/beamFinal.png";
+    const std::string kPathEnemyNormal = "./images/EnemyBullets/EBullet.png";
+    const std::string kPathEnemyIce = "./images/EnemyBullets/EBulletIce.png";
+    const std::string kPathEnemyFire = "./images/EnemyBullets/EBulletFire.png";
+    const std::string kPathEnemyBeam = "./images/EnemyBullets/Beam.png";
+    const std::string kPathEnemyBeamIce = "./images/EnemyBullets/BeamIce.png";
+#if 0
+    const std::string kPathEnemyFinal = "./images/EnemyBullets/EBulletFinal.png";
+    const std::string kPathEnemyBeamFinal = "./images/EnemyBullets/beamFinal.png";
+#endif
 }
 
 BulletManager::~BulletManager() {
@@ -38,6 +47,15 @@ void BulletManager::Init() {
     HIKARI::TEXTURE::Register("tex_p_beam", kPathBeam);
     HIKARI::TEXTURE::Register("tex_p_beam_plus", kPathBeamPlus);
     HIKARI::TEXTURE::Register("tex_p_beam_final", kPathBeamFinal);
+    HIKARI::TEXTURE::Register("tex_e_normal", kPathEnemyNormal);
+    HIKARI::TEXTURE::Register("tex_e_ice", kPathEnemyIce);
+    HIKARI::TEXTURE::Register("tex_e_fire", kPathEnemyFire);
+    HIKARI::TEXTURE::Register("tex_e_beam", kPathEnemyBeam);
+    HIKARI::TEXTURE::Register("tex_e_beam_ice", kPathEnemyBeamIce);
+#if 0
+    HIKARI::TEXTURE::Register("tex_e_final", kPathEnemyFinal);
+    HIKARI::TEXTURE::Register("tex_e_beam_final", kPathEnemyBeamFinal);
+#endif
 
     {
         EffectPrototype proto;
@@ -163,6 +181,55 @@ void BulletManager::InitCommonStyles() {
     sBeamFinal.hitFxName = "fx_hit_spark";
     sBeamFinal.baseRadius = 8.0f;
     RegisterStyle("beam_final", sBeamFinal);
+
+    BulletStyle eNormal;
+    eNormal.name = "e_normal";
+    eNormal.textureName = "tex_e_normal";
+    eNormal.flyFxName = "fx_trail_cyan";
+    eNormal.hitFxName = "fx_hit_spark";
+    eNormal.baseRadius = 8.0f;
+    RegisterStyle("e_normal", eNormal);
+
+    BulletStyle eIce;
+    eIce.name = "e_ice";
+    eIce.textureName = "tex_e_ice";
+    eIce.flyFxName = "fx_trail_cyan";
+    eIce.hitFxName = "fx_hit_spark";
+    eIce.baseRadius = 8.0f;
+    RegisterStyle("e_ice", eIce);
+
+    BulletStyle eFire;
+    eFire.name = "e_fire";
+    eFire.textureName = "tex_e_fire";
+    eFire.flyFxName = "fx_trail_gold";
+    eFire.hitFxName = "fx_hit_spark";
+    eFire.baseRadius = 8.0f;
+    RegisterStyle("e_fire", eFire);
+
+    BulletStyle eBeam;
+    eBeam.name = "e_beam";
+    eBeam.textureName = "tex_e_beam";
+    eBeam.flyFxName = "fx_trail_cyan";
+    eBeam.hitFxName = "fx_hit_spark";
+    eBeam.baseRadius = 8.0f;
+    RegisterStyle("e_beam", eBeam);
+
+    BulletStyle eBeamIce;
+    eBeamIce.name = "e_beam_ice";
+    eBeamIce.textureName = "tex_e_beam_ice";
+    eBeamIce.flyFxName = "fx_trail_cyan";
+    eBeamIce.hitFxName = "fx_hit_spark";
+    eBeamIce.baseRadius = 8.0f;
+    RegisterStyle("e_beam_ice", eBeamIce);
+#if 0
+    BulletStyle eFinal;
+    eFinal.name = "e_final";
+    eFinal.textureName = "tex_e_final";
+    eFinal.flyFxName = "fx_trail_gold";
+    eFinal.hitFxName = "fx_hit_spark";
+    eFinal.baseRadius = 8.0f;
+    RegisterStyle("e_final", eFinal);
+#endif
 }
 
 void BulletManager::RegisterStyle(const std::string& name, const BulletStyle& style) {
@@ -293,4 +360,3 @@ void BulletManager::Draw() {
     HIKARI::POST::PostSystem::SetIntensity(1.0f);
 
 }
-

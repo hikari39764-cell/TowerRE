@@ -26,7 +26,6 @@ Scene_Game::Scene_Game(ScrollBackground& bg)
 
 void Scene_Game::OnCreate()
 {
-    gAura.InitOnce();
 }
 
 void Scene_Game::OnEnter()

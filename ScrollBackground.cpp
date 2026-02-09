@@ -9,7 +9,7 @@
 using namespace HIKARI;
 
 namespace {
-    // 资源路径（按你给的）
+    // 资源路径
     const char* kBgNormal = "./images/stage/normal.png";
     const char* kFgNormal = "./images/stage/normal_fg.png";
 
@@ -19,7 +19,6 @@ namespace {
     const char* kBgFire = "./images/stage/fire.png";
     const char* kFgFire = "./images/stage/fire_fg.png";
 
-    // final 你没给素材名，这里先留空。你后面自己在 DrawFinal() 里做动画。
 }
 
 void ScrollBackground::LoadOnce()
@@ -35,7 +34,7 @@ void ScrollBackground::LoadOnce()
 
 void ScrollBackground::RegisterStageTextures_()
 {
-    // 每个阶段独立 key（这样切换只换 key，不需要重注册）
+    // 每个阶段独立 key
     TEXTURE::Register("stage_bg_normal", kBgNormal, "stage");
     TEXTURE::Register("stage_fg_normal", kFgNormal, "stage");
 
@@ -45,7 +44,7 @@ void ScrollBackground::RegisterStageTextures_()
     TEXTURE::Register("stage_bg_fire", kBgFire, "stage");
     TEXTURE::Register("stage_fg_fire", kFgFire, "stage");
 
-    // final 暂时不注册（你要自己做动画）
+    // final 暂时不注册
 }
 
 void ScrollBackground::ResetScroll()
@@ -77,14 +76,11 @@ void ScrollBackground::SetStage(Stage s)
 
 void ScrollBackground::BeginTransition(Stage s, float durationSec)
 {
-    // final 的转场你说暂时不做：这里直接切即可（你后面要做再加）
     if (s == Stage::Final) {
         SetStage(Stage::Final);
         return;
     }
 
-    // 只实现：Normal->Ice, Ice->Fire
-    // 其他组合先直接切（避免你测试时卡住）
     if (!((stage_ == Stage::Normal && s == Stage::Ice) ||
         (stage_ == Stage::Ice && s == Stage::Fire))) {
         SetStage(s);
@@ -106,14 +102,11 @@ void ScrollBackground::EnsurePostInited_()
     if (postInited_) { return; }
     postInited_ = true;
 
-    // 这里用 new 是为了避免你没包含完整定义导致 stack 构造问题；你也可以改成成员对象
     fxIceWipe_ = new POST::PostEffect();
     fxFireWipe_ = new POST::PostEffect();
     chainIce_ = new POST::PostChain();
     chainFire_ = new POST::PostChain();
 
-    // shader 路径
-    // 你把下面两个 hlsl 放到 ./shaders/ 下（我下面给完整文件）
     fxIceWipe_->LoadPixelShader(L"./shaders/PS_StageWipe_Ice.hlsl");
     fxFireWipe_->LoadPixelShader(L"./shaders/PS_StageWipe_Fire.hlsl");
 
@@ -126,13 +119,12 @@ void ScrollBackground::EnsurePostInited_()
 
 void ScrollBackground::Update(float dt)
 {
-    // Final：不滚动
+
     if (stage_ == Stage::Final) {
         UpdateFinal(dt);
         return;
     }
 
-    // 继续滚动（滚动值在阶段切换时不重置 -> “继承滚动值”）
     bgOffsetY_ += GAMECFG::kScrollSpeedBg * dt;
     fgOffsetY_ += GAMECFG::kScrollSpeedFg * dt;
 
@@ -142,7 +134,7 @@ void ScrollBackground::Update(float dt)
     if (transitioning_) {
         transT_ += dt;
         if (transT_ >= transDur_) {
-            // 转场结束：正式切到新阶段（offset 不变）
+
             transitioning_ = false;
             SetStage(toStage_);
         }
@@ -152,7 +144,6 @@ void ScrollBackground::Update(float dt)
 void ScrollBackground::DrawStage_(Stage s)
 {
     if (s == Stage::Final) {
-        // final：你要求不画前景，而且要留空函数给你填动画
         DrawFinal();
         return;
     }
@@ -171,7 +162,6 @@ void ScrollBackground::DrawStage_(Stage s)
         fgKey = "stage_fg_fire";
     }
 
-    // 背景：2112 循环滚动（用你原逻辑）:contentReference[oaicite:2]{index=2}
     int y0 = -(int)bgOffsetY_;
     {
         Transform2D t{};
@@ -183,7 +173,6 @@ void ScrollBackground::DrawStage_(Stage s)
         RENDERER::DrawSprite(bgKey, t, (float)GAMECFG::kGameW, (float)GAMECFG::kStageBgH);
     }
 
-    // 前景：你目前是固定画一次（y=0）:contentReference[oaicite:3]{index=3}
     {
         Transform2D t{};
         t.pivotPx = { 0,0 };
@@ -200,7 +189,6 @@ void ScrollBackground::DrawTransitionOverlay_()
     if (p < 0.0f) { p = 0.0f; }
     if (p > 1.0f) { p = 1.0f; }
 
-    // 选择 shader（只做 Normal->Ice, Ice->Fire）
     POST::PostChain* chain = nullptr;
     POST::PostEffect* fx = nullptr;
 
@@ -217,7 +205,7 @@ void ScrollBackground::DrawTransitionOverlay_()
 
     fx->SetUser(0, DirectX::XMFLOAT4(
         p,
-        60.0f,  // 边缘宽度（像素）
+        60.0f,  // 边缘宽度
         0.9f,   // 边缘噪声起伏
         1.0f    // 特效强度
     ));
@@ -237,7 +225,6 @@ void ScrollBackground::Draw()
     // 先画旧/当前阶段
     DrawStage_(stage_);
 
-    // 如果在转场：叠加新阶段 layer（只影响 1280*1000 的游戏区；UI你在右侧自己画，不会被这里覆盖）
     if (transitioning_) {
         DrawTransitionOverlay_();
     }

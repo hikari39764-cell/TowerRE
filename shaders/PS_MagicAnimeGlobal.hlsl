@@ -102,7 +102,7 @@ float FogNoise(float2 uv, float t)
 
 float4 main(PS_IN i) : SV_TARGET
 {
-    // -------- 先取“原图”（区域外直接用它）--------
+    // -------- 原图--------
     float3 baseCol = gTex.Sample(gSamp, i.uv).rgb;
 
     // -------- 1280x1000 区域 mask（左上角为原点）--------
@@ -164,7 +164,7 @@ float4 main(PS_IN i) : SV_TARGET
     float breath = 1.5 + 0.5 * sin(time * 0.9 + i.uv.y * 3.0);
     col *= 1.0 + (breath - 0.5) * 0.035 * saturate(intensity);
 
-    // -------- Fog（这里也只在区域内更合理：直接乘 areaMask）--------
+    // -------- Fog--------
     float bottom = smoothstep(0.42, 1.00, i.uv.y);
     float fn = FogNoise(i.uv, time);
 
@@ -182,12 +182,11 @@ float4 main(PS_IN i) : SV_TARGET
     // -------- 最终小增强 --------
     col *= 1.03;
 
-    // -------- Vignette（也只希望在区域内生效：它作用在 col 上即可）--------
+    // -------- Vignette--------
     float2 p = i.uv * 2.0 - 1.0;
     float v = dot(p, p);
     col *= 1.0 - vignette * v;
 
-    // -------- 关键：区域外返回原图，区域内返回特效 --------
     float3 finalCol = lerp(baseCol, col, areaMask);
     return float4(saturate(finalCol), 1.0);
 }

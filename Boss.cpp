@@ -160,13 +160,6 @@ void Boss::InitModes() {
     heavySmash.sequence = { { ActionPattern::HeavySmash, 0.0f } };
     meleeMode.skillPool.push_back(heavySmash);
 
-    SkillDef lateralRush;
-    lateralRush.name = "Lateral Rush";
-    lateralRush.weight = 30;
-    lateralRush.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Fire, GlobalPhase::Final };
-    lateralRush.sequence = { { ActionPattern::LateralRush, 0.0f } };
-    meleeMode.skillPool.push_back(lateralRush);
-
     SkillDef flameRushBurst;
     flameRushBurst.name = "Flame Rush Burst";
     flameRushBurst.weight = 25;
@@ -366,11 +359,10 @@ void Boss::UpdateState(float dt) {
                     crossBurstStep_ = 0; icicleSpawnTimer_ = 0.0f;
                     iceMissileStep_ = 0; iceMissileTotal_ = 0;
                     fireSpiralTimer_ = 0.0f; fireSpiralAngle_ = 0.0f;
-                    flameRushStep_ = 0; flameBurstRemaining_ = 0;
+                    flameRushStep_ = 0; flameBurstRemaining_ = 0; flameRushReturnTimer_ = 0.0f; flameRushReturnStart_ = {};
                     iceSkateStep_ = 0; iceSkateDropTimer_ = 0.0f;
                     slamStep_ = 0; scatterStep_ = 0; apocalypseStep_ = 0;
-                    heavySmashStep_ = 0; lateralRushStep_ = 0; lateralRushDropTimer_ = 0.0f;
-                    lateralRushDir_ = 1; sweepShotStep_ = 0; sweepShotAngle_ = 0.0f;
+                    heavySmashStep_ = 0; sweepShotStep_ = 0; sweepShotAngle_ = 0.0f;
                 }
             } else if (pattern_ == ActionPattern::Idle) {
                 TryNextComboAction();
@@ -387,7 +379,6 @@ void Boss::UpdateState(float dt) {
             else if (pattern_ == ActionPattern::FlameRushBurst) PatternFlameRushBurst(dt);
             else if (pattern_ == ActionPattern::IceSkateRush) PatternIceSkateRush(dt);
             else if (pattern_ == ActionPattern::HeavySmash) PatternHeavySmash(dt);
-            else if (pattern_ == ActionPattern::LateralRush) PatternLateralRush(dt);
             else if (pattern_ == ActionPattern::SweepShot) PatternSweepShot(dt);
         }
         break;
@@ -638,10 +629,10 @@ void Boss::RequestPattern(ActionPattern next, bool ease) {
         rushStep_ = 0; ringStep_ = 0; fanShotStep_ = 0;
         crossBurstStep_ = 0; icicleSpawnTimer_ = 0.0f;
         iceMissileStep_ = 0; fireSpiralTimer_ = 0.0f;
-        flameRushStep_ = 0; iceSkateStep_ = 0;
+        flameRushStep_ = 0; flameBurstRemaining_ = 0; flameRushReturnTimer_ = 0.0f; flameRushReturnStart_ = {};
+        iceSkateStep_ = 0;
         slamStep_ = 0; scatterStep_ = 0; apocalypseStep_ = 0;
-        heavySmashStep_ = 0; lateralRushStep_ = 0; lateralRushDropTimer_ = 0.0f;
-        lateralRushDir_ = 1; sweepShotStep_ = 0; sweepShotAngle_ = 0.0f;
+        heavySmashStep_ = 0; sweepShotStep_ = 0; sweepShotAngle_ = 0.0f;
     }
 }
 
@@ -886,10 +877,20 @@ void Boss::PatternFlameRushBurst(float dt) {
         position_ += rushDir_ * rushSpeed_ * dt;
         if (position_.x < -100 || position_.x>1380 || position_.y > 800 || patternTime_ > 1.5f) {
             flameRushStep_ = 2; patternTime_ = 0; flameBurstRemaining_ = 3;
-            position_ = { 640,200 }; ShakeScreenHeavy(0.5f);
+            flameRushReturnTimer_ = 0.0f;
+            flameRushReturnStart_ = position_;
+            ShakeScreenHeavy(0.5f);
             if (particleSys_) particleSys_->PlayOneShot("BossImpact", position_, 1);
         }
     } else if (flameRushStep_ == 2) {
+        flameRushReturnTimer_ += dt;
+        float t = std::clamp(flameRushReturnTimer_ / 0.35f, 0.0f, 1.0f);
+        position_ = LerpVec2(flameRushReturnStart_, { 640.0f, 200.0f }, EaseInOutQuad(t));
+        if (t >= 1.0f) {
+            flameRushStep_ = 3;
+            patternTime_ = 0.0f;
+        }
+    } else if (flameRushStep_ == 3) {
         if (patternTime_ > 0.25f) {
             patternTime_ = 0; flameBurstRemaining_--;
             if (bulletMgr_) {
@@ -973,43 +974,6 @@ void Boss::PatternHeavySmash(float dt) {
         }
     } else if (heavySmashStep_ == 2) {
         if (patternTime_ > 0.5f) {
-            TryNextComboAction();
-        }
-    }
-}
-
-void Boss::PatternLateralRush(float dt) {
-    patternTime_ += dt;
-    if (lateralRushStep_ == 0) {
-        if (target_) {
-            lateralRushDir_ = (target_->GetPos().x >= position_.x) ? 1 : -1;
-        }
-        position_.y = LerpFloat(position_.y, 220.0f, 0.12f);
-        if (patternTime_ > 0.35f) {
-            lateralRushStep_ = 1;
-            patternTime_ = 0.0f;
-            ShakeScreenHeavy(0.3f);
-        }
-    } else if (lateralRushStep_ == 1) {
-        position_.x += lateralRushDir_ * rushSpeed_ * 1.1f * dt;
-        lateralRushDropTimer_ -= dt;
-        if (lateralRushDropTimer_ <= 0.0f) {
-            lateralRushDropTimer_ = 0.08f;
-            if (bulletMgr_) {
-                Bullet b; b.pos = position_;
-                float angle = lateralRushDir_ > 0 ? 3.1415f : 0.0f;
-                b.vel = { cos(angle) * 180.0f, sin(angle) * 180.0f };
-                b.isEnemy = true;
-                static BulletLinear lin; b.behavior = &lin;
-                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
-            }
-        }
-        if ((lateralRushDir_ > 0 && position_.x > 1400.0f) || (lateralRushDir_ < 0 && position_.x < -120.0f)) {
-            lateralRushDir_ *= -1;
-            lateralRushStep_++;
-            ShakeScreenLight(0.2f);
-        }
-        if (lateralRushStep_ >= 4) {
             TryNextComboAction();
         }
     }

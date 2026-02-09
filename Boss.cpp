@@ -65,21 +65,21 @@ void Boss::SetDifficulty(DifficultyLevel level) {
 
     switch (level) {
     case DifficultyLevel::Challenge:
-        maxHp_ = 50000.0f;          // 更高血量
-        speedMultiplier_ = 1.1f;    // 原速 (或者更快 1.1f)
+        maxHp_ = 45000.0f;          // 更高血量
+        speedMultiplier_ = 1.05f;   // 稍快
         introDuration_ = 2.5f;      // 入场更快
         moveSpeed_ = 90.0f;         // 移动更快
-        rushSpeed_ = 1400.0f;       // 冲撞极快
-        normalDuration_ = 3.0f;     // 攻击欲望强 (3秒平A就放技能)
+        rushSpeed_ = 1300.0f;       // 冲撞极快
+        normalDuration_ = 3.2f;     // 攻击欲望强
         break;
     case DifficultyLevel::Normal:
     default:
-        maxHp_ = 3000.0f;
+        maxHp_ = 3500.0f;
         speedMultiplier_ = 1.0f;    // 整体动作变慢 (原版逻辑)
         introDuration_ = 5.5f;      // 给了很长的入场展示时间
-        moveSpeed_ = 80.0f;
-        rushSpeed_ = 1000.0f;
-        normalDuration_ = 5.0f;
+        moveSpeed_ = 78.0f;
+        rushSpeed_ = 920.0f;
+        normalDuration_ = 5.3f;
         break;
     }
 
@@ -494,9 +494,9 @@ void Boss::UpdateNormalBehavior(float dt) {
     normalMoveTime_ += dt;
     shootTimer_ -= dt;
 
-    float baseDuration = 4.5f;
-    if (currentGlobalPhase_ == GlobalPhase::Ice) baseDuration = 3.5f;
-    if (currentGlobalPhase_ == GlobalPhase::Fire) baseDuration = 2.7f;
+    float baseDuration = 5.0f;
+    if (currentGlobalPhase_ == GlobalPhase::Ice) baseDuration = 4.0f;
+    if (currentGlobalPhase_ == GlobalPhase::Fire) baseDuration = 3.2f;
     if (difficulty_ == DifficultyLevel::Challenge) baseDuration *= 0.75f;
     normalDuration_ = baseDuration;
 
@@ -515,15 +515,15 @@ void Boss::UpdateNormalBehavior(float dt) {
     if (shootTimer_ <= 0.0f) {
         FireNormalBarrage();
         // 冷却时间
-        float baseCd = 1.2f;
-        if (currentGlobalPhase_ == GlobalPhase::Ice) baseCd = 1.0f;
-        if (currentGlobalPhase_ == GlobalPhase::Fire) baseCd = 0.7f;
+        float baseCd = 1.4f;
+        if (currentGlobalPhase_ == GlobalPhase::Ice) baseCd = 1.15f;
+        if (currentGlobalPhase_ == GlobalPhase::Fire) baseCd = 0.9f;
 #if 0
         if (currentGlobalPhase_ == GlobalPhase::Final) baseCd = 0.4f;
 #endif
 
         // ★ 难度影响射速
-        if (difficulty_ == DifficultyLevel::Challenge) baseCd *= 0.7f; // Challenge 射得更快
+        if (difficulty_ == DifficultyLevel::Challenge) baseCd *= 0.8f; // Challenge 射得更快
 
         shootTimer_ = baseCd;
     }
@@ -539,20 +539,20 @@ void Boss::FireNormalBarrage() {
     const std::string styleName = GetBulletStyleForPhase();
     if (currentGlobalPhase_ == GlobalPhase::Normal) {
         Vector2 dir = Normalize(target_->GetPos() - position_);
-        Bullet b; b.pos = position_; b.vel = dir * 400.0f; b.isEnemy = true;
+        Bullet b; b.pos = position_; b.vel = dir * 360.0f; b.isEnemy = true;
         static BulletLinear lin; b.behavior = &lin;
         bulletMgr_->Spawn(b, styleName);
     } else if (currentGlobalPhase_ == GlobalPhase::Ice) {
         float angle = std::atan2(target_->GetPos().y - position_.y, target_->GetPos().x - position_.x);
         for (int i = -1; i <= 1; ++i) {
             float a = angle + i * 0.3f;
-            Bullet b; b.pos = position_; b.vel = { std::cos(a) * 350.f, std::sin(a) * 350.f }; b.isEnemy = true;
+            Bullet b; b.pos = position_; b.vel = { std::cos(a) * 320.f, std::sin(a) * 320.f }; b.isEnemy = true;
             static BulletLinear lin; b.behavior = &lin;
             bulletMgr_->Spawn(b, styleName);
         }
     } else {
         static float spinA = 0.0f; spinA += 0.5f;
-        Bullet b; b.pos = position_; b.vel = { std::cos(spinA) * 500.f, std::sin(spinA) * 500.f }; b.isEnemy = true;
+        Bullet b; b.pos = position_; b.vel = { std::cos(spinA) * 440.f, std::sin(spinA) * 440.f }; b.isEnemy = true;
         static BulletLinear lin; b.behavior = &lin;
         bulletMgr_->Spawn(b, styleName);
     }
@@ -684,6 +684,15 @@ void Boss::PatternRush(float dt) {
             rushStep_ = 1; patternTime_ = 0.0f;
             if (target_) rushDir_ = Normalize(target_->GetPos() - position_);
             else rushDir_ = { 0, 1 };
+            HIKARI::CAMERA::ShakeParams camShake{};
+            camShake.durationSec = 0.35f;
+            camShake.ampX = 14.0f;
+            camShake.ampY = 6.0f;
+            camShake.freqX = 80.0f;
+            camShake.freqY = 20.0f;
+            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
+            HIKARI::CAMERA::ShakeEx(camShake);
+            HIKARI::HINPUT::SetPadVibration(0.6f, 0.6f, 0.2f);
         }
     } else if (rushStep_ == 1) {
         // ★ 使用 rushSpeed_ 变量
@@ -702,33 +711,43 @@ void Boss::PatternRingShot(float dt) {
         patternTime_ -= interval;
         ringStep_++;
         if (bulletMgr_) {
-            int count = 20;
+            int count = 18;
             float step = 6.28318f / count;
             float offset = ringStep_ * 0.1f;
             for (int i = 0; i < count; ++i) {
                 float a = i * step + offset;
-                Bullet b; b.pos = position_; b.vel = { std::cos(a) * 300.f, std::sin(a) * 300.f }; b.isEnemy = true;
+                Bullet b; b.pos = position_; b.vel = { std::cos(a) * 260.f, std::sin(a) * 260.f }; b.isEnemy = true;
                 static BulletLinear lin; b.behavior = &lin;
                 bulletMgr_->Spawn(b, GetBulletStyleForPhase());
             }
         }
-        int waves = (difficulty_ == DifficultyLevel::Challenge) ? 8 : 5;
+        if (ringStep_ == 1) {
+            HIKARI::CAMERA::ShakeParams camShake{};
+            camShake.durationSec = 0.25f;
+            camShake.ampX = 8.0f;
+            camShake.ampY = 4.0f;
+            camShake.freqX = 60.0f;
+            camShake.freqY = 20.0f;
+            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
+            HIKARI::CAMERA::ShakeEx(camShake);
+        }
+        int waves = (difficulty_ == DifficultyLevel::Challenge) ? 6 : 4;
         if (ringStep_ >= waves) TryNextComboAction();
     }
 }
 
 void Boss::PatternFanShot(float dt) {
     patternTime_ += dt;
-    float interval = (currentGlobalPhase_ == GlobalPhase::Fire) ? 0.3f : 0.35f;
+    float interval = (currentGlobalPhase_ == GlobalPhase::Fire) ? 0.32f : 0.38f;
     if (patternTime_ >= interval) {
         patternTime_ -= interval;
         fanShotStep_++;
 
         if (bulletMgr_ && target_) {
             float angle = std::atan2(target_->GetPos().y - position_.y, target_->GetPos().x - position_.x);
-            int count = (currentGlobalPhase_ == GlobalPhase::Fire) ? 9 : 10;
-            float spread = (currentGlobalPhase_ == GlobalPhase::Fire) ? 1.2f : 0.9f;
-            float speed = (currentGlobalPhase_ == GlobalPhase::Fire) ? 420.0f : 320.0f;
+            int count = (currentGlobalPhase_ == GlobalPhase::Fire) ? 9 : 8;
+            float spread = (currentGlobalPhase_ == GlobalPhase::Fire) ? 1.05f : 0.85f;
+            float speed = (currentGlobalPhase_ == GlobalPhase::Fire) ? 380.0f : 300.0f;
             float step = (count > 1) ? (spread / static_cast<float>(count - 1)) : 0.0f;
             float start = angle - spread * 0.5f;
             for (int i = 0; i < count; ++i) {
@@ -739,7 +758,18 @@ void Boss::PatternFanShot(float dt) {
             }
         }
 
-        int waves = (currentGlobalPhase_ == GlobalPhase::Fire) ? 2 : 3;
+        if (fanShotStep_ == 1) {
+            HIKARI::CAMERA::ShakeParams camShake{};
+            camShake.durationSec = 0.2f;
+            camShake.ampX = 6.0f;
+            camShake.ampY = 3.0f;
+            camShake.freqX = 70.0f;
+            camShake.freqY = 20.0f;
+            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
+            HIKARI::CAMERA::ShakeEx(camShake);
+        }
+
+        int waves = (currentGlobalPhase_ == GlobalPhase::Fire) ? 3 : 2;
         if (fanShotStep_ >= waves) TryNextComboAction();
     }
 }
@@ -753,7 +783,7 @@ void Boss::PatternCrossBurst(float dt) {
 
         if (bulletMgr_) {
             int count = 8;
-            float speed = 320.0f;
+            float speed = 280.0f;
             float base = crossBurstStep_ * 0.2f;
             for (int i = 0; i < count; ++i) {
                 float a = base + (6.28318f / count) * i;
@@ -763,24 +793,45 @@ void Boss::PatternCrossBurst(float dt) {
             }
         }
 
-        if (crossBurstStep_ >= 3) TryNextComboAction();
+        if (crossBurstStep_ == 1) {
+            HIKARI::CAMERA::ShakeParams camShake{};
+            camShake.durationSec = 0.25f;
+            camShake.ampX = 9.0f;
+            camShake.ampY = 4.0f;
+            camShake.freqX = 70.0f;
+            camShake.freqY = 20.0f;
+            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
+            HIKARI::CAMERA::ShakeEx(camShake);
+        }
+
+        if (crossBurstStep_ >= 2) TryNextComboAction();
     }
 }
 
 void Boss::PatternIcicleRain(float dt) {
     patternTime_ += dt;
     icicleSpawnTimer_ -= dt;
-    const float duration = 2.2f;
+    const float duration = 2.0f;
     if (icicleSpawnTimer_ <= 0.0f) {
-        icicleSpawnTimer_ = (difficulty_ == DifficultyLevel::Challenge) ? 0.07f : 0.09f;
+        icicleSpawnTimer_ = (difficulty_ == DifficultyLevel::Challenge) ? 0.08f : 0.1f;
         if (bulletMgr_) {
             float x = 200.0f + static_cast<float>(rand() % 881);
-            float drift = -40.0f + static_cast<float>(rand() % 81);
-            float speed = 420.0f + static_cast<float>(rand() % 101);
+            float drift = -30.0f + static_cast<float>(rand() % 61);
+            float speed = 360.0f + static_cast<float>(rand() % 81);
             Bullet b; b.pos = { x, -20.0f }; b.vel = { drift, speed }; b.isEnemy = true;
             static BulletLinear lin; b.behavior = &lin;
             bulletMgr_->Spawn(b, GetBulletStyleForPhase());
         }
+    }
+    if (patternTime_ <= dt) {
+        HIKARI::CAMERA::ShakeParams camShake{};
+        camShake.durationSec = 0.25f;
+        camShake.ampX = 6.0f;
+        camShake.ampY = 6.0f;
+        camShake.freqX = 40.0f;
+        camShake.freqY = 40.0f;
+        camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
+        HIKARI::CAMERA::ShakeEx(camShake);
     }
     if (patternTime_ >= duration) {
         TryNextComboAction();
@@ -789,20 +840,30 @@ void Boss::PatternIcicleRain(float dt) {
 
 void Boss::PatternIceMissile(float dt) {
     patternTime_ += dt;
-    float interval = (difficulty_ == DifficultyLevel::Challenge) ? 0.22f : 0.26f;
+    float interval = (difficulty_ == DifficultyLevel::Challenge) ? 0.25f : 0.3f;
     if (iceMissileTotal_ == 0) {
-        iceMissileTotal_ = 3 + (rand() % 3);
+        iceMissileTotal_ = 2 + (rand() % 3);
     }
     if (patternTime_ >= interval) {
         patternTime_ -= interval;
         if (iceMissileStep_ < iceMissileTotal_) {
             if (bulletMgr_ && target_) {
                 Vector2 dir = Normalize(target_->GetPos() - position_);
-                Bullet b; b.pos = position_; b.vel = dir * 180.0f; b.acc = dir * 140.0f; b.isEnemy = true;
+                Bullet b; b.pos = position_; b.vel = dir * 160.0f; b.acc = dir * 120.0f; b.isEnemy = true;
                 static BulletAccel accel; b.behavior = &accel;
                 bulletMgr_->Spawn(b, GetBulletStyleForPhase());
             }
             iceMissileStep_++;
+        }
+        if (iceMissileStep_ == 1) {
+            HIKARI::CAMERA::ShakeParams camShake{};
+            camShake.durationSec = 0.22f;
+            camShake.ampX = 7.0f;
+            camShake.ampY = 4.0f;
+            camShake.freqX = 60.0f;
+            camShake.freqY = 20.0f;
+            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
+            HIKARI::CAMERA::ShakeEx(camShake);
         }
         if (iceMissileStep_ >= iceMissileTotal_) {
             TryNextComboAction();
@@ -813,22 +874,33 @@ void Boss::PatternIceMissile(float dt) {
 void Boss::PatternFireSpiral(float dt) {
     patternTime_ += dt;
     fireSpiralTimer_ -= dt;
-    float interval = (difficulty_ == DifficultyLevel::Challenge) ? 0.08f : 0.1f;
+    float interval = (difficulty_ == DifficultyLevel::Challenge) ? 0.09f : 0.11f;
     if (fireSpiralTimer_ <= 0.0f) {
         fireSpiralTimer_ = interval;
         if (bulletMgr_) {
             int count = (difficulty_ == DifficultyLevel::Challenge) ? 4 : 3;
             float spread = 0.25f;
-            float speed = 300.0f + static_cast<float>(rand() % 81);
+            float speed = 260.0f + static_cast<float>(rand() % 61);
             for (int i = 0; i < count; ++i) {
                 float a = fireSpiralAngle_ + (i - (count - 1) * 0.5f) * spread;
                 Vector2 dir = { std::cos(a), std::sin(a) };
-                Bullet b; b.pos = position_; b.vel = dir * speed; b.acc = dir * 60.0f; b.isEnemy = true;
+                Bullet b; b.pos = position_; b.vel = dir * speed; b.acc = dir * 50.0f; b.isEnemy = true;
                 static BulletAccel accel; b.behavior = &accel;
                 bulletMgr_->Spawn(b, GetBulletStyleForPhase());
             }
         }
         fireSpiralAngle_ += 0.35f;
+    }
+    if (patternTime_ <= dt) {
+        HIKARI::CAMERA::ShakeParams camShake{};
+        camShake.durationSec = 0.25f;
+        camShake.ampX = 8.0f;
+        camShake.ampY = 5.0f;
+        camShake.freqX = 70.0f;
+        camShake.freqY = 20.0f;
+        camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
+        HIKARI::CAMERA::ShakeEx(camShake);
+        HIKARI::HINPUT::SetPadVibration(0.5f, 0.5f, 0.15f);
     }
     if (patternTime_ >= 2.0f) {
         TryNextComboAction();
@@ -846,6 +918,15 @@ void Boss::PatternFlameRushBurst(float dt) {
             patternTime_ = 0.0f;
             if (target_) rushDir_ = Normalize(target_->GetPos() - position_);
             else rushDir_ = { 0, 1 };
+            HIKARI::CAMERA::ShakeParams camShake{};
+            camShake.durationSec = 0.35f;
+            camShake.ampX = 16.0f;
+            camShake.ampY = 6.0f;
+            camShake.freqX = 80.0f;
+            camShake.freqY = 20.0f;
+            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
+            HIKARI::CAMERA::ShakeEx(camShake);
+            HIKARI::HINPUT::SetPadVibration(0.8f, 0.8f, 0.25f);
         }
     } else if (flameRushStep_ == 1) {
         position_ += rushDir_ * rushSpeed_ * dt;
@@ -854,14 +935,22 @@ void Boss::PatternFlameRushBurst(float dt) {
             patternTime_ = 0.0f;
             flameBurstRemaining_ = (currentGlobalPhase_ == GlobalPhase::Fire) ? 2 : 1;
             position_ = { 640.0f, 200.0f };
+            HIKARI::CAMERA::ShakeParams camShake{};
+            camShake.durationSec = 0.3f;
+            camShake.ampX = 12.0f;
+            camShake.ampY = 8.0f;
+            camShake.freqX = 60.0f;
+            camShake.freqY = 30.0f;
+            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
+            HIKARI::CAMERA::ShakeEx(camShake);
         }
     } else if (flameRushStep_ == 2) {
-        float interval = (currentGlobalPhase_ == GlobalPhase::Fire) ? 0.25f : 0.3f;
+        float interval = (currentGlobalPhase_ == GlobalPhase::Fire) ? 0.27f : 0.32f;
         if (patternTime_ >= interval) {
             patternTime_ = 0.0f;
             if (bulletMgr_) {
-                int minCount = (currentGlobalPhase_ == GlobalPhase::Fire) ? 24 : 12;
-                int maxCount = (currentGlobalPhase_ == GlobalPhase::Fire) ? 32 : 16;
+                int minCount = (currentGlobalPhase_ == GlobalPhase::Fire) ? 18 : 10;
+                int maxCount = (currentGlobalPhase_ == GlobalPhase::Fire) ? 24 : 14;
                 int count = minCount + (rand() % (maxCount - minCount + 1));
                 float step = 6.28318f / static_cast<float>(count);
                 for (int i = 0; i < count; ++i) {
@@ -891,17 +980,26 @@ void Boss::PatternIceSkateRush(float dt) {
             iceSkateDropTimer_ = 0.0f;
             if (target_) rushDir_ = Normalize(target_->GetPos() - position_);
             else rushDir_ = { 0, 1 };
+            HIKARI::CAMERA::ShakeParams camShake{};
+            camShake.durationSec = 0.35f;
+            camShake.ampX = 14.0f;
+            camShake.ampY = 6.0f;
+            camShake.freqX = 80.0f;
+            camShake.freqY = 20.0f;
+            camShake.envelope = HIKARI::ANIM::EASE::OutQuad;
+            HIKARI::CAMERA::ShakeEx(camShake);
+            HIKARI::HINPUT::SetPadVibration(0.7f, 0.7f, 0.2f);
         }
     } else if (iceSkateStep_ == 1) {
         position_ += rushDir_ * rushSpeed_ * dt;
         iceSkateDropTimer_ -= dt;
         if (iceSkateDropTimer_ <= 0.0f) {
-            iceSkateDropTimer_ = 0.06f;
+            iceSkateDropTimer_ = 0.08f;
             if (bulletMgr_) {
                 Vector2 dropPos = position_ - rushDir_ * 30.0f;
                 float drift = -0.3f + static_cast<float>(rand() % 61) / 100.0f;
                 float angle = std::atan2(rushDir_.y, rushDir_.x) + 3.14159265f + drift;
-                Bullet b; b.pos = dropPos; b.vel = { std::cos(angle) * 260.f, std::sin(angle) * 260.f }; b.isEnemy = true;
+                Bullet b; b.pos = dropPos; b.vel = { std::cos(angle) * 220.f, std::sin(angle) * 220.f }; b.isEnemy = true;
                 static BulletLinear lin; b.behavior = &lin;
                 bulletMgr_->Spawn(b, GetBulletStyleForPhase());
             }

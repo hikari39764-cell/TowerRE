@@ -153,6 +153,13 @@ void Boss::InitModes() {
     groundSlam.sequence = { { ActionPattern::GroundSlam, 2.0f } };
     meleeMode.skillPool.push_back(groundSlam);
 
+    SkillDef heavySmash;
+    heavySmash.name = "Heavy Smash";
+    heavySmash.weight = 35;
+    heavySmash.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire, GlobalPhase::Final };
+    heavySmash.sequence = { { ActionPattern::HeavySmash, 0.0f } };
+    meleeMode.skillPool.push_back(heavySmash);
+
     SkillDef flameRushBurst;
     flameRushBurst.name = "Flame Rush Burst";
     flameRushBurst.weight = 25;
@@ -191,6 +198,10 @@ void Boss::InitModes() {
     SkillDef fanShot; fanShot.name = "Fan Shot"; fanShot.weight = 25; fanShot.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Fire };
     fanShot.sequence = { { ActionPattern::FanShot, 0.0f } };
     magicMode.skillPool.push_back(fanShot);
+
+    SkillDef sweepShot; sweepShot.name = "Sweep Shot"; sweepShot.weight = 30; sweepShot.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Ice, GlobalPhase::Fire, GlobalPhase::Final };
+    sweepShot.sequence = { { ActionPattern::SweepShot, 0.0f } };
+    magicMode.skillPool.push_back(sweepShot);
 
     SkillDef fireSpiral; fireSpiral.name = "FireSpiral"; fireSpiral.weight = 30; fireSpiral.allowedGlobalPhases = { GlobalPhase::Fire };
     fireSpiral.sequence = { {ActionPattern::FireSpiral, 0.0f} };
@@ -348,10 +359,13 @@ void Boss::UpdateState(float dt) {
                     crossBurstStep_ = 0; icicleSpawnTimer_ = 0.0f;
                     iceMissileStep_ = 0; iceMissileTotal_ = 0;
                     fireSpiralTimer_ = 0.0f; fireSpiralAngle_ = 0.0f;
-                    flameRushStep_ = 0; flameBurstRemaining_ = 0;
+                    flameRushStep_ = 0; flameBurstRemaining_ = 0; flameRushReturnTimer_ = 0.0f; flameRushReturnStart_ = {};
                     iceSkateStep_ = 0; iceSkateDropTimer_ = 0.0f;
                     slamStep_ = 0; scatterStep_ = 0; apocalypseStep_ = 0;
+                    heavySmashStep_ = 0; sweepShotStep_ = 0; sweepShotAngle_ = 0.0f;
                 }
+            } else if (pattern_ == ActionPattern::Idle) {
+                TryNextComboAction();
             } else if (pattern_ == ActionPattern::Rush) PatternRush(dt);
             else if (pattern_ == ActionPattern::GroundSlam) PatternGroundSlam(dt);
             else if (pattern_ == ActionPattern::ScatterShot) PatternScatterShot(dt);
@@ -364,6 +378,8 @@ void Boss::UpdateState(float dt) {
             else if (pattern_ == ActionPattern::FireSpiral) PatternFireSpiral(dt);
             else if (pattern_ == ActionPattern::FlameRushBurst) PatternFlameRushBurst(dt);
             else if (pattern_ == ActionPattern::IceSkateRush) PatternIceSkateRush(dt);
+            else if (pattern_ == ActionPattern::HeavySmash) PatternHeavySmash(dt);
+            else if (pattern_ == ActionPattern::SweepShot) PatternSweepShot(dt);
         }
         break;
 
@@ -613,8 +629,10 @@ void Boss::RequestPattern(ActionPattern next, bool ease) {
         rushStep_ = 0; ringStep_ = 0; fanShotStep_ = 0;
         crossBurstStep_ = 0; icicleSpawnTimer_ = 0.0f;
         iceMissileStep_ = 0; fireSpiralTimer_ = 0.0f;
-        flameRushStep_ = 0; iceSkateStep_ = 0;
+        flameRushStep_ = 0; flameBurstRemaining_ = 0; flameRushReturnTimer_ = 0.0f; flameRushReturnStart_ = {};
+        iceSkateStep_ = 0;
         slamStep_ = 0; scatterStep_ = 0; apocalypseStep_ = 0;
+        heavySmashStep_ = 0; sweepShotStep_ = 0; sweepShotAngle_ = 0.0f;
     }
 }
 
@@ -859,10 +877,20 @@ void Boss::PatternFlameRushBurst(float dt) {
         position_ += rushDir_ * rushSpeed_ * dt;
         if (position_.x < -100 || position_.x>1380 || position_.y > 800 || patternTime_ > 1.5f) {
             flameRushStep_ = 2; patternTime_ = 0; flameBurstRemaining_ = 3;
-            position_ = { 640,200 }; ShakeScreenHeavy(0.5f);
+            flameRushReturnTimer_ = 0.0f;
+            flameRushReturnStart_ = position_;
+            ShakeScreenHeavy(0.5f);
             if (particleSys_) particleSys_->PlayOneShot("BossImpact", position_, 1);
         }
     } else if (flameRushStep_ == 2) {
+        flameRushReturnTimer_ += dt;
+        float t = std::clamp(flameRushReturnTimer_ / 0.35f, 0.0f, 1.0f);
+        position_ = LerpVec2(flameRushReturnStart_, { 640.0f, 200.0f }, EaseInOutQuad(t));
+        if (t >= 1.0f) {
+            flameRushStep_ = 3;
+            patternTime_ = 0.0f;
+        }
+    } else if (flameRushStep_ == 3) {
         if (patternTime_ > 0.25f) {
             patternTime_ = 0; flameBurstRemaining_--;
             if (bulletMgr_) {
@@ -901,6 +929,78 @@ void Boss::PatternIceSkateRush(float dt) {
             }
         }
         if (position_.x < -100 || position_.x>1380 || position_.y > 800 || patternTime_ > 2.0f) TryNextComboAction();
+    }
+}
+
+void Boss::PatternHeavySmash(float dt) {
+    patternTime_ += dt;
+    if (heavySmashStep_ == 0) {
+        Vector2 targetPos = { 640.0f, 240.0f };
+        if (target_) targetPos.x = target_->GetPos().x;
+        position_ = LerpVec2(position_, targetPos, 0.12f);
+        if (particleSys_ && rand() % 4 == 0) particleSys_->PlayOneShot("BossCharge", position_, 1);
+        if (patternTime_ > 0.6f) {
+            heavySmashStep_ = 1;
+            patternTime_ = 0.0f;
+            ShakeScreenHeavy(0.4f);
+        }
+    } else if (heavySmashStep_ == 1) {
+        position_.y += 1400.0f * dt;
+        if (position_.y >= 480.0f) {
+            position_.y = 480.0f;
+            ShakeScreenHeavy(0.6f);
+            if (particleSys_) particleSys_->PlayOneShot("BossImpact", position_, 40);
+            if (bulletMgr_) {
+                int ringCount = 28;
+                float step = 6.28318f / ringCount;
+                for (int i = 0; i < ringCount; ++i) {
+                    float a = i * step;
+                    Bullet b; b.pos = position_; b.vel = { cos(a) * 380.0f, sin(a) * 380.0f }; b.isEnemy = true;
+                    static BulletLinear lin; b.behavior = &lin;
+                    bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+                }
+                if (target_) {
+                    Vector2 d = Normalize(target_->GetPos() - position_);
+                    for (int i = -2; i <= 2; ++i) {
+                        float a = std::atan2(d.y, d.x) + i * 0.15f;
+                        Bullet b; b.pos = position_; b.vel = { cos(a) * 520.0f, sin(a) * 520.0f }; b.isEnemy = true;
+                        static BulletLinear lin; b.behavior = &lin;
+                        bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+                    }
+                }
+            }
+            heavySmashStep_ = 2;
+            patternTime_ = 0.0f;
+        }
+    } else if (heavySmashStep_ == 2) {
+        if (patternTime_ > 0.5f) {
+            TryNextComboAction();
+        }
+    }
+}
+
+void Boss::PatternSweepShot(float dt) {
+    patternTime_ += dt;
+    if (sweepShotStep_ == 0 && patternTime_ <= dt) {
+        sweepShotAngle_ = -1.2f;
+        ShakeScreenLight(0.12f);
+        if (particleSys_) particleSys_->PlayOneShot("BossCharge", position_, 3);
+    }
+    if (patternTime_ > 0.12f) {
+        patternTime_ = 0.0f;
+        sweepShotStep_++;
+        sweepShotAngle_ += 0.3f;
+        if (bulletMgr_) {
+            for (int i = 0; i < 4; ++i) {
+                float a = sweepShotAngle_ + i * 0.2f;
+                Bullet b; b.pos = position_; b.vel = { cos(a) * 360.0f, sin(a) * 360.0f }; b.isEnemy = true;
+                static BulletLinear lin; b.behavior = &lin;
+                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
+            }
+        }
+        if (sweepShotStep_ >= 10) {
+            TryNextComboAction();
+        }
     }
 }
 

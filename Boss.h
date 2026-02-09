@@ -35,6 +35,8 @@ enum class ActionPattern {
     FireSpiral,
     FlameRushBurst,
     IceSkateRush,
+    HeavySmash,
+    SweepShot,
     Apocalypse,
     Changing,
     Wait
@@ -119,6 +121,8 @@ private:
     void PatternFireSpiral(float dt);
     void PatternFlameRushBurst(float dt);
     void PatternIceSkateRush(float dt);
+    void PatternHeavySmash(float dt);
+    void PatternSweepShot(float dt);
     void PatternApocalypse(float dt);
 
     void RequestPattern(ActionPattern next, bool ease = true);
@@ -192,6 +196,8 @@ private:
     float fireSpiralAngle_ = 0.0f;
     int flameRushStep_ = 0;
     int flameBurstRemaining_ = 0;
+    float flameRushReturnTimer_ = 0.0f;
+    Vector2 flameRushReturnStart_{};
     float iceSkateDropTimer_ = 0.0f;
     int iceSkateStep_ = 0;
 
@@ -199,6 +205,9 @@ private:
     int scatterStep_ = 0;
     int apocalypseStep_ = 0;
     float apocalypseAngle_ = 0.0f;
+    int heavySmashStep_ = 0;
+    int sweepShotStep_ = 0;
+    float sweepShotAngle_ = 0.0f;
 
     Vector2 renderScale_{ 1.0f, 1.0f };
     float renderRotation_ = 0.0f;

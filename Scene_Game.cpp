@@ -109,6 +109,15 @@ void Scene_Game::Update(float dt)
         player_.OnHit(&bossPos, 800.0f);
     }
 
+    if (!requestedResult_ && player_.IsDead()) {
+        requestedResult_ = true;
+        bullets_.ClearAll();
+        if (mgr_ != nullptr) {
+            mgr_->RequestChange(SceneId::Result, std::make_unique<FadeTransition>(0.25f, 0.25f));
+        }
+        return;
+    }
+
     if (!requestedResult_ && boss_.IsDead()) {
         requestedResult_ = true;
         bullets_.ClearAll();

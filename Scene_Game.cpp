@@ -136,6 +136,6 @@ void Scene_Game::Draw()
     bullets_.GetFxSystem().Draw();
     gAura.DrawLayer();
     player_.Draw();
-    particleSys_.Draw();
+    /*particleSys_.Draw();*/
     hud_.Draw(player_, boss_);
 }

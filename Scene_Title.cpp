@@ -16,7 +16,7 @@ void Scene_Title::OnCreate()
 {
 	spineAnimation_.Load("./Animation/titleTower.atlas", "./Animation/title.json");
 	spineAnimation_2.Load("./Animation/titleTower.atlas", "./Animation/title.json");
-    HIKARI::TEXTURE::Register("titleXbg", "./images/Ui/uiBgTitle", "titleScene");
+    HIKARI::TEXTURE::Register("titleXbg", "./images/Ui/uiBgTitle.png", "titleScene");
     HIKARI::TEXTURE::LoadGroup("titleScene");
     spineAnimation_.transform = { 640.0f,320.0f };
     spineAnimation_2.transform = { 640.0f,620.0f };
@@ -38,7 +38,7 @@ void Scene_Title::Update(float dt)
     bg_.Update(dt);
     spineAnimation_2.Update(kDt);
     spineAnimation_.Update(kDt);
-    if (!requested_ && HIKARI::HINPUT::IsPressed("Space")) {
+    if (!requested_ && HIKARI::HINPUT::IsPressed("Enter")) {
         requested_ = true;
         if (mgr_ != nullptr) {
 			spineAnimation_.SetAnimation("titleOut", false);

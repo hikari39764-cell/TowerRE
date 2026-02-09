@@ -33,4 +33,6 @@ void Scene_Result::Update(float dt)
 
 void Scene_Result::Draw()
 {
+
+    Novice::ScreenPrintf(320, 300, "SPACE TO RESTART");
 }

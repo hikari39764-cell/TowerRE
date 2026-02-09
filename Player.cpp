@@ -169,7 +169,7 @@ void Player::ToggleFire()
 
 void Player::TryUpgradeSpeed()
 {
-    if (HINPUT::IsPressed("I")) {
+    if (HINPUT::IsPressed("Down")) {
         if (speedLv_ < GAMECFG::kPlayerMaxSpeedLv) {
             if (ConsumeMana(GAMECFG::kCostUpgradeSpeed)) {
                 speedLv_ += 1;
@@ -181,7 +181,7 @@ void Player::TryUpgradeSpeed()
 
 void Player::TryUpgradeShot()
 {
-    if (HINPUT::IsPressed("U")) {
+    if (HINPUT::IsPressed("Up")) {
         if (shotLv_ < 12) {
             if (ConsumeMana(GAMECFG::kCostUpgradeShot)) {
                 shotLv_ += 1;
@@ -222,8 +222,8 @@ void Player::Shoot(float dt, BulletManager& bullets)
 
 void Player::TryDash()
 {
-    // 兼容：你可以用 Dash，也可以沿用 Player1 的 Capture
-    if (!HINPUT::IsPressed("J")) {
+    
+    if (!HINPUT::IsPressed("Right")) {
         return;
     }
 
@@ -231,10 +231,9 @@ void Player::TryDash()
         return;
     }
 
-    // 统一移动向量：优先手柄左摇杆 + 已归一化（输入空间：Y 上为 +）
     Vector2 moveIn = HINPUT::GetMoveVectorNormalized();
 
-    // 没有输入 -> 用最近方向（原地 dash）
+
     if (moveIn.x == 0.0f && moveIn.y == 0.0f) {
         moveIn = lastMoveDir_;
     }
@@ -244,7 +243,6 @@ void Player::TryDash()
         return;
     }
 
-    // 启动 dash 的这一帧才扣魔力点（不够就不启动）
     if (!ConsumeMana(GAMECFG::kCostDash)) {
         return;
     }
@@ -261,7 +259,7 @@ void Player::TryDash()
 
 void Player::TryHeal()
 {
-    if (HINPUT::IsPressed("K")) {
+    if (HINPUT::IsPressed("Left")) {
         if (healCd_ <= 0.0f) {
             if (hp_ < GAMECFG::kPlayerMaxHp + 10) {
                 if (ConsumeMana(GAMECFG::kCostHeal)) {

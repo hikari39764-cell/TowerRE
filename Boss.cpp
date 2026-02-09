@@ -114,12 +114,12 @@ void Boss::InitParticleEffects() {
 void Boss::SetDifficulty(DifficultyLevel level) {
     difficulty_ = level;
     if (level == DifficultyLevel::Challenge) {
-        maxHp_ = 50000.0f;
+        maxHp_ = 5000.0f;
         speedMultiplier_ = 1.15f;
         rushSpeed_ = 1500.0f;
         normalDuration_ = 2.5f;
     } else {
-        maxHp_ = 35000.0f;
+        maxHp_ = 3000.0f;
         speedMultiplier_ = 1.0f;
         rushSpeed_ = 950.0f;
         normalDuration_ = 4.0f;

@@ -196,6 +196,22 @@ void Boss::InitModes() {
     fireSpiral.sequence = { {ActionPattern::FireSpiral, 0.0f} };
     magicMode.skillPool.push_back(fireSpiral);
 
+    SkillDef ringShot; ringShot.name = "Ring Shot"; ringShot.weight = 25; ringShot.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Fire, GlobalPhase::Final };
+    ringShot.sequence = { { ActionPattern::RingShot, 0.0f } };
+    magicMode.skillPool.push_back(ringShot);
+
+    SkillDef crossBurst; crossBurst.name = "Cross Burst"; crossBurst.weight = 25; crossBurst.allowedGlobalPhases = { GlobalPhase::Normal, GlobalPhase::Final };
+    crossBurst.sequence = { { ActionPattern::CrossBurst, 0.0f } };
+    magicMode.skillPool.push_back(crossBurst);
+
+    SkillDef frostChase; frostChase.name = "Frost Chase"; frostChase.weight = 25; frostChase.allowedGlobalPhases = { GlobalPhase::Ice };
+    frostChase.sequence = { { ActionPattern::IceMissile, 0.0f }, { ActionPattern::Wait, 0.35f }, { ActionPattern::IceSkateRush, 0.0f } };
+    magicMode.skillPool.push_back(frostChase);
+
+    SkillDef ringCross; ringCross.name = "Ring Cross"; ringCross.weight = 20; ringCross.allowedGlobalPhases = { GlobalPhase::Fire, GlobalPhase::Final };
+    ringCross.sequence = { { ActionPattern::RingShot, 0.0f }, { ActionPattern::Wait, 0.25f }, { ActionPattern::CrossBurst, 0.0f } };
+    magicMode.skillPool.push_back(ringCross);
+
     modes_.push_back(magicMode);
 }
 
@@ -667,27 +683,21 @@ void Boss::PatternGroundSlam(float dt) {
 void Boss::PatternScatterShot(float dt) {
     patternTime_ += dt;
 
-    if (scatterStep_ == 0) {
-        if (patternTime_ > 0.2f) {
-            if (bulletMgr_) {
-                for (int k = 0; k < 5; ++k) {
-                    float angle = (rand() % 360) * 0.01745f;
-                    float speed = 200.0f + (rand() % 200);
-                    Bullet b; b.pos = position_; b.vel = { cos(angle) * speed, sin(angle) * speed }; b.isEnemy = true;
-                    static BulletLinear lin; b.behavior = &lin;
-                    bulletMgr_->Spawn(b, GetBulletStyleForPhase());
-                }
+    if (patternTime_ > 0.2f) {
+        if (bulletMgr_) {
+            for (int k = 0; k < 5; ++k) {
+                float angle = (rand() % 360) * 0.01745f;
+                float speed = 200.0f + (rand() % 200);
+                Bullet b; b.pos = position_; b.vel = { cos(angle) * speed, sin(angle) * speed }; b.isEnemy = true;
+                static BulletLinear lin; b.behavior = &lin;
+                bulletMgr_->Spawn(b, GetBulletStyleForPhase());
             }
-            ShakeScreenLight(0.1f);
-            scatterStep_++;
-            patternTime_ = 0.0f;
         }
-    } else if (scatterStep_ < 5) {
-        if (patternTime_ > 0.15f) {
-            scatterStep_ = 0;
-            patternTime_ = 0.0f;
-        }
-    } else {
+        ShakeScreenLight(0.1f);
+        scatterStep_++;
+        patternTime_ = 0.0f;
+    }
+    if (scatterStep_ >= 5) {
         TryNextComboAction();
     }
 }
@@ -729,6 +739,10 @@ void Boss::PatternApocalypse(float dt) {
 
 void Boss::PatternRingShot(float dt) {
     patternTime_ += dt;
+    if (ringStep_ == 0 && patternTime_ <= dt) {
+        ShakeScreenLight(0.15f);
+        if (particleSys_) particleSys_->PlayOneShot("BossCharge", position_, 4);
+    }
     if (patternTime_ > 0.15f) {
         patternTime_ = 0.0f;
         ringStep_++;
@@ -769,6 +783,10 @@ void Boss::PatternFanShot(float dt) {
 }
 void Boss::PatternCrossBurst(float dt) {
     patternTime_ += dt;
+    if (crossBurstStep_ == 0 && patternTime_ <= dt) {
+        ShakeScreenLight(0.12f);
+        if (particleSys_) particleSys_->PlayOneShot("BossCharge", position_, 3);
+    }
     if (patternTime_ > 0.25f) {
         patternTime_ = 0; crossBurstStep_++;
         if (bulletMgr_) {
@@ -798,6 +816,10 @@ void Boss::PatternIcicleRain(float dt) {
 void Boss::PatternIceMissile(float dt) {
     patternTime_ += dt;
     if (iceMissileTotal_ == 0) iceMissileTotal_ = 5;
+    if (iceMissileStep_ == 0 && patternTime_ <= dt) {
+        ShakeScreenLight(0.15f);
+        if (particleSys_) particleSys_->PlayOneShot("BossCharge", position_, 4);
+    }
     if (patternTime_ > 0.2f) {
         patternTime_ = 0; iceMissileStep_++;
         if (bulletMgr_ && target_) {
